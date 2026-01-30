@@ -8,16 +8,20 @@ crate-type = ["cdylib"]
 
 [dependencies]
 anyhow = "1.0.100"
-anyrender = "0.6.0"
-blitz-dom = { version = "0.2.4", default-features = false, features = ["file_input", "svg", "woff-rust"] }
-blitz-html = "0.2.0"
-blitz-paint = "0.2.1"
-blitz-traits = "0.2.0"
+anyrender = "0.7.0"
+blitz-dom = { path = "./blitz/packages/blitz-dom", default-features = false, features = ["file_input", "svg", "woff-rust"] }
+blitz-html = { path = "./blitz/packages/blitz-html" }
+blitz-paint = { path = "./blitz/packages/blitz-paint" }
+blitz-traits = { path = "./blitz/packages/blitz-traits" }
 console_error_panic_hook = "0.1.7"
-fontique = { version = "0.6.0", default-features = false }
+data-url = "0.2"
+# hacky
+fontique = { git = "https://github.com/linebender/parley", rev = "4f1bedf08c9d98a646975806adccc6ca41a08841" }
 js-sys = "0.3.85"
-vello = "0.6.0"
+keyboard-types = "0.7.0"
+reqwest = { version = "0.12", features = ["charset", "rustls-tls", "multipart"] }
+vello = "0.7.0"
 wasm-bindgen = "0.2.108"
 wasm-bindgen-futures = "0.4.58"
-web-sys = { version = "0.3.85", features = ["OffscreenCanvas", "WebGl2RenderingContext"] }
-wgpu = { version = "26.0.1", default-features = false, features = ["fragile-send-sync-non-atomic-wasm", "web"] }
+web-sys = { version = "0.3.85", features = ["OffscreenCanvas", "WebGl2RenderingContext", "PointerEvent", "MouseEvent", "KeyboardEvent", "WheelEvent"] }
+wgpu = { version = "27.0.1", default-features = false, features = ["fragile-send-sync-non-atomic-wasm", "web"] }

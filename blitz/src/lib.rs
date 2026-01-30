@@ -1,67 +1,25 @@
+use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use blitz_dom::{DocumentConfig, FontContext};
+use blitz_dom::{Document, DocumentConfig, FontContext};
 use blitz_html::HtmlDocument;
-use blitz_traits::shell::{ColorScheme, Viewport};
+use blitz_traits::{
+    events::{UiEvent, BlitzPointerEvent, BlitzWheelEvent, BlitzKeyEvent, PointerCoords, BlitzPointerId, MouseEventButton},
+    shell::{ColorScheme, Viewport},
+};
 use fontique::Blob;
+use keyboard_types::{Code, Key, Location, Modifiers};
 use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
-use web_sys::OffscreenCanvas;
+use web_sys::{OffscreenCanvas, PointerEvent, WheelEvent, KeyboardEvent};
 
 use crate::{anyrender::VelloScenePainter, canvas::CanvasVelloScene};
 
 pub mod anyrender;
+pub mod blitz_net;
 pub mod canvas;
 
 pub const CANTARELL_FONT: &[u8] = include_bytes!("../assets/cantarell.otf");
-const HTML: &str = r#"
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <style type="text/css">
-            html, body {
-                height: 100%;
-                margin: 0;
-                font-family: Cantarell;
-            }
-
-            body {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                gap: 1rem;
-                flex-direction: column;
-                background: #f4e8d2;
-            }
-        </style>
-    </head>
-    <body>
-        <svg viewBox="0 0 368 106" version="1.1" xmlns="http://www.w3.org/2000/svg" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
-            <g>
-                <path d="M131.548,97.488L131.548,8.369L144.939,8.369C150.903,8.369 155.656,8.831 159.196,9.755C162.774,10.678 165.795,12.236 168.258,14.43C170.759,16.7 172.741,19.528 174.203,22.915C175.703,26.339 176.454,29.802 176.454,33.304C176.454,39.692 174.01,45.098 169.123,49.523C173.856,51.139 177.589,53.967 180.321,58.008C183.091,62.01 184.477,66.666 184.477,71.976C184.477,78.941 182.014,84.828 177.089,89.638C174.126,92.601 170.797,94.66 167.103,95.814C163.063,96.93 158.003,97.488 151.923,97.488L131.548,97.488ZM144.997,46.637L149.21,46.637C154.213,46.637 157.878,45.531 160.206,43.318C162.534,41.106 163.698,37.845 163.698,33.535C163.698,29.341 162.505,26.156 160.119,23.982C157.734,21.808 154.27,20.721 149.73,20.721L144.997,20.721L144.997,46.637ZM144.997,84.847L153.308,84.847C159.388,84.847 163.852,83.654 166.699,81.269C169.701,78.691 171.201,75.42 171.201,71.456C171.201,67.608 169.758,64.376 166.872,61.76C164.063,59.181 159.042,57.892 151.808,57.892L144.997,57.892L144.997,84.847Z" style="fill-rule:nonzero;"/>
-                <rect x="202.173" y="0" width="12.987" height="97.488" style="fill-rule:nonzero;"/>
-                <path d="M247.806,41.269L247.806,97.488L234.819,97.488L234.819,41.269L247.806,41.269ZM232.857,17.893C232.857,15.623 233.684,13.66 235.338,12.006C236.993,10.351 238.975,9.524 241.284,9.524C243.631,9.524 245.632,10.351 247.286,12.006C248.941,13.622 249.768,15.603 249.768,17.951C249.768,20.298 248.941,22.299 247.286,23.953C245.67,25.608 243.689,26.435 241.341,26.435C238.994,26.435 236.993,25.608 235.338,23.953C233.684,22.299 232.857,20.279 232.857,17.893Z" style="fill-rule:nonzero;"/>
-                <path d="M285.856,53.39L285.856,97.488L272.869,97.488L272.869,53.39L267.328,53.39L267.328,41.269L272.869,41.269L272.869,20.663L285.856,20.663L285.856,41.269L295.957,41.269L295.957,53.39L285.856,53.39Z" style="fill-rule:nonzero;"/>
-                <path d="M331.64,85.251L365.059,85.251L365.059,97.488L305.897,97.488L342.318,53.39L313.631,53.39L313.631,41.269L368.003,41.269L331.64,85.251Z" style="fill-rule:nonzero;"/>
-            </g>
-            <g>
-                <g>
-                    <circle cx="53" cy="53" r="53" style="fill:rgb(1,99,63);"/>
-                    <circle cx="53" cy="53" r="45.773" style="fill:rgb(0,118,114);"/>
-                    <circle cx="53" cy="53" r="38.545" style="fill:rgb(62,149,147);"/>
-                    <circle cx="53" cy="53" r="31.318" style="fill:rgb(252,176,64);"/>
-                    <circle cx="53" cy="53" r="24.091" style="fill:rgb(233,86,41);"/>
-                    <circle cx="53" cy="53" r="16.864" style="fill:rgb(230,29,50);"/>
-                </g>
-                <g>
-                    <path d="M39.759,90.287C39.549,90.287 39.338,90.241 39.137,90.144C38.49,89.83 38.177,89.087 38.404,88.405L49.211,55.986L38.33,55.986C37.853,55.986 37.407,55.747 37.141,55.35C36.875,54.953 36.826,54.448 37.011,54.008L51.303,19.707C51.524,19.174 52.045,18.826 52.622,18.826L66.2,18.826C66.684,18.826 67.136,19.072 67.399,19.478C67.663,19.886 67.702,20.397 67.504,20.839L56.257,45.982L66.914,45.982C67.439,45.982 67.922,46.27 68.172,46.73C68.422,47.192 68.398,47.754 68.11,48.193L40.955,89.64C40.682,90.057 40.228,90.287 39.759,90.287Z" style="fill:rgb(244,232,210);fill-rule:nonzero;"/>
-                </g>
-            </g>
-        </svg>
-        HTML rendering in WASM
-    </body>
-    </html>
-"#;
 
 #[wasm_bindgen(start)]
 pub fn start() {
@@ -77,13 +35,16 @@ fn anyhow_to_obj(val: anyhow::Error) -> JsError {
 }
 
 #[wasm_bindgen]
+pub struct BlitzRendererEvent(UiEvent);
+
+#[wasm_bindgen]
 pub struct BlitzRenderer {
     scene: CanvasVelloScene,
     doc: HtmlDocument,
 }
 #[wasm_bindgen]
 impl BlitzRenderer {
-    async fn _with_offscreen(canvas: OffscreenCanvas) -> anyhow::Result<BlitzRenderer> {
+    async fn _new(html: String, canvas: OffscreenCanvas, scale: f32) -> anyhow::Result<BlitzRenderer> {
         let mut font_ctx = FontContext::default();
         font_ctx
             .collection
@@ -91,39 +52,256 @@ impl BlitzRenderer {
 
         let config = DocumentConfig {
             font_ctx: Some(font_ctx),
-            viewport: Some(Viewport::new(canvas.width(), canvas.height(), 1.0, ColorScheme::Dark)),
+            viewport: Some(Viewport::new(
+                canvas.width(),
+                canvas.height(),
+                scale as f32,
+                ColorScheme::Dark,
+            )),
+            net_provider: Some(crate::blitz_net::Provider::shared(None)),
             ..Default::default()
         };
-        
+
         Ok(BlitzRenderer {
-            scene: CanvasVelloScene::new(canvas)
+            scene: CanvasVelloScene::new(canvas, scale)
                 .await
                 .context("failed to create vello scene")?,
-            doc: HtmlDocument::from_html(
-                HTML,
-                config,
-            ),
+            doc: HtmlDocument::from_html(&html, config),
         })
     }
 
     #[wasm_bindgen]
-    pub async fn with_offscreen(canvas: OffscreenCanvas) -> Result<BlitzRenderer, JsError> {
-        Self::_with_offscreen(canvas).await.map_err(anyhow_to_obj)
+    pub async fn new(html: String, canvas: OffscreenCanvas, scale: f32) -> Result<BlitzRenderer, JsError> {
+        Self::_new(html, canvas, scale).await.map_err(anyhow_to_obj)
+    }
+
+    async fn _resize(&mut self, canvas: OffscreenCanvas, scale: f32) -> anyhow::Result<()> {
+        let mut viewport = self.doc.viewport_mut();
+        viewport.window_size = (canvas.width(), canvas.height());
+        viewport.set_hidpi_scale(scale);
+
+        self.scene = CanvasVelloScene::new(canvas, scale)
+            .await
+            .context("failed to create vello scene")?;
+        Ok(())
+    }
+    #[wasm_bindgen]
+    pub async fn resize(&mut self, canvas: OffscreenCanvas, scale: f32) -> Result<(), JsError> {
+        self._resize(canvas, scale).await.map_err(anyhow_to_obj)
     }
 
     #[wasm_bindgen]
-    pub fn render(&mut self) -> Result<(), JsError> {
-        self.doc.resolve(0.0);
+    pub fn render(&mut self, time: f64) -> Result<(), JsError> {
+        self.doc.resolve(time);
         self.scene
-            .render(|scene, width, height| {
+            .render(|scene, width, height, scale| {
                 blitz_paint::paint_scene(
                     &mut VelloScenePainter::new(scene),
                     &self.doc,
-                    1.0,
+                    scale as f64,
                     width,
                     height,
+                    0,
+                    0,
                 );
             })
             .map_err(anyhow_to_obj)
+    }
+
+    #[wasm_bindgen]
+    pub fn event(&mut self, event: BlitzRendererEvent) {
+        self.doc.handle_ui_event(event.0);
+    }
+
+    #[wasm_bindgen]
+    pub fn event_pointer(
+        &self,
+        web_event: &PointerEvent,
+        canvas_x: f32,
+        canvas_y: f32,
+    ) -> Result<BlitzRendererEvent, JsError> {
+        let id = match web_event.pointer_type().as_str() {
+            "mouse" => BlitzPointerId::Mouse,
+            "pen" => BlitzPointerId::Pen,
+            "touch" => BlitzPointerId::Finger(web_event.pointer_id() as u64),
+            _ => BlitzPointerId::Mouse,
+        };
+
+        let button = match web_event.button() {
+            0 => MouseEventButton::Main,
+            1 => MouseEventButton::Auxiliary,
+            2 => MouseEventButton::Secondary,
+            3 => MouseEventButton::Fourth,
+            4 => MouseEventButton::Fifth,
+            _ => MouseEventButton::Main,
+        };
+
+        let mut mods = Modifiers::empty();
+        if web_event.alt_key() {
+            mods |= Modifiers::ALT;
+        }
+        if web_event.ctrl_key() {
+            mods |= Modifiers::CONTROL;
+        }
+        if web_event.shift_key() {
+            mods |= Modifiers::SHIFT;
+        }
+        if web_event.meta_key() {
+            mods |= Modifiers::META;
+        }
+
+        let mut buttons = 0u8;
+        if web_event.buttons() & 0x01 != 0 {
+            buttons |= 0x01;
+        }
+        if web_event.buttons() & 0x02 != 0 {
+            buttons |= 0x02;
+        }
+        if web_event.buttons() & 0x04 != 0 {
+            buttons |= 0x04;
+        }
+        if web_event.buttons() & 0x08 != 0 {
+            buttons |= 0x08;
+        }
+        if web_event.buttons() & 0x10 != 0 {
+            buttons |= 0x10;
+        }
+
+        let event = BlitzPointerEvent {
+            id,
+            is_primary: web_event.is_primary(),
+            coords: PointerCoords {
+                page_x: (web_event.page_x() as f32) - canvas_x,
+                page_y: (web_event.page_y() as f32) - canvas_y,
+                screen_x: web_event.screen_x() as f32,
+                screen_y: web_event.screen_y() as f32,
+                client_x: (web_event.client_x() as f32) - canvas_x,
+                client_y: (web_event.client_y() as f32) - canvas_y,
+            },
+            button,
+            buttons: blitz_traits::events::MouseEventButtons::from_bits_truncate(buttons),
+            mods,
+            details: Default::default(),
+        };
+
+        let ui_event = match web_event.type_().as_str() {
+            "pointerdown" => UiEvent::PointerDown(event),
+            "pointerup" => UiEvent::PointerUp(event),
+            _ => UiEvent::PointerMove(event),
+        };
+
+        Ok(BlitzRendererEvent(ui_event))
+    }
+
+    #[wasm_bindgen]
+    pub fn event_wheel(
+        &self,
+        web_event: &WheelEvent,
+        canvas_x: f32,
+        canvas_y: f32,
+    ) -> Result<BlitzRendererEvent, JsError> {
+        let mut mods = Modifiers::empty();
+        if web_event.alt_key() {
+            mods |= Modifiers::ALT;
+        }
+        if web_event.ctrl_key() {
+            mods |= Modifiers::CONTROL;
+        }
+        if web_event.shift_key() {
+            mods |= Modifiers::SHIFT;
+        }
+        if web_event.meta_key() {
+            mods |= Modifiers::META;
+        }
+
+        let mut buttons = 0u8;
+        if web_event.buttons() & 0x01 != 0 {
+            buttons |= 0x01;
+        }
+        if web_event.buttons() & 0x02 != 0 {
+            buttons |= 0x02;
+        }
+        if web_event.buttons() & 0x04 != 0 {
+            buttons |= 0x04;
+        }
+        if web_event.buttons() & 0x08 != 0 {
+            buttons |= 0x08;
+        }
+        if web_event.buttons() & 0x10 != 0 {
+            buttons |= 0x10;
+        }
+
+        let delta = match web_event.delta_mode() {
+            0 => blitz_traits::events::BlitzWheelDelta::Pixels(-web_event.delta_x(), -web_event.delta_y()),
+            1 => blitz_traits::events::BlitzWheelDelta::Lines(-web_event.delta_x(), -web_event.delta_y()),
+            _ => blitz_traits::events::BlitzWheelDelta::Pixels(-web_event.delta_x(), -web_event.delta_y()),
+        };
+
+        let event = BlitzWheelEvent {
+            delta,
+            coords: PointerCoords {
+                page_x: (web_event.page_x() as f32) - canvas_x,
+                page_y: (web_event.page_y() as f32) - canvas_y,
+                screen_x: web_event.screen_x() as f32,
+                screen_y: web_event.screen_y() as f32,
+                client_x: (web_event.client_x() as f32) - canvas_x,
+                client_y: (web_event.client_y() as f32) - canvas_y,
+            },
+            buttons: blitz_traits::events::MouseEventButtons::from_bits_truncate(buttons),
+            mods,
+        };
+
+        Ok(BlitzRendererEvent(UiEvent::Wheel(event)))
+    }
+
+    #[wasm_bindgen]
+    pub fn event_keyboard(&self, web_event: &KeyboardEvent) -> Result<BlitzRendererEvent, JsError> {
+        let mut mods = Modifiers::empty();
+        if web_event.alt_key() {
+            mods |= Modifiers::ALT;
+        }
+        if web_event.ctrl_key() {
+            mods |= Modifiers::CONTROL;
+        }
+        if web_event.shift_key() {
+            mods |= Modifiers::SHIFT;
+        }
+        if web_event.meta_key() {
+            mods |= Modifiers::META;
+        }
+
+        let code = Code::from_str(&web_event.code()).unwrap_or(Code::Unidentified);
+        let key = Key::from_str(&web_event.key()).unwrap_or(Key::Unidentified);
+        let location = match web_event.location() {
+            0 => Location::Standard,
+            1 => Location::Left,
+            2 => Location::Right,
+            3 => Location::Numpad,
+            _ => Location::Standard,
+        };
+
+        let state = if web_event.type_() == "keydown" {
+            blitz_traits::events::KeyState::Pressed
+        } else {
+            blitz_traits::events::KeyState::Released
+        };
+
+        let event = BlitzKeyEvent {
+            key,
+            code,
+            modifiers: mods,
+            location,
+            is_auto_repeating: web_event.repeat(),
+            is_composing: web_event.is_composing(),
+            state,
+            text: None,
+        };
+
+        let ui_event = match web_event.type_().as_str() {
+            "keydown" => UiEvent::KeyDown(event),
+            _ => UiEvent::KeyUp(event),
+        };
+
+        Ok(BlitzRendererEvent(ui_event))
     }
 }

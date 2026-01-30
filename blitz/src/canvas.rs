@@ -15,9 +15,10 @@ pub struct CanvasVelloScene {
     scene: Scene,
     width: u32,
     height: u32,
+    scale: f32,
 }
 impl CanvasVelloScene {
-    pub async fn new(canvas: OffscreenCanvas) -> Result<CanvasVelloScene> {
+    pub async fn new(canvas: OffscreenCanvas, scale: f32) -> Result<CanvasVelloScene> {
         let width = canvas.width();
         let height = canvas.height();
 
@@ -70,10 +71,11 @@ impl CanvasVelloScene {
             scene: Scene::new(),
             width,
             height,
+            scale,
         })
     }
 
-    pub fn render(&mut self, func: impl Fn(&mut Scene, u32, u32)) -> anyhow::Result<()> {
+    pub fn render(&mut self, func: impl Fn(&mut Scene, u32, u32, f32)) -> anyhow::Result<()> {
         let texture = self
             .surface
             .get_current_texture()
@@ -89,7 +91,7 @@ impl CanvasVelloScene {
             height: self.height,
         };
 
-        func(&mut self.scene, self.width, self.height);
+        func(&mut self.scene, self.width, self.height, self.scale);
 
         self.renderer
             .render_to_texture(&self.device, &self.queue, &self.scene, &view, &params)

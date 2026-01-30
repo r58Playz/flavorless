@@ -6,6 +6,14 @@ mkdir out/ || true
 rm -r pkg/ || true
 mkdir pkg/
 
+if ! [ -d "blitz" ]; then
+	(
+		git clone https://github.com/dioxuslabs/blitz -b 15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8
+		cd blitz || exit 1
+		git apply ../blitz.patch
+	)
+fi
+
 if [ "${MINIMAL:-0}" = "1" ]; then
 	CARGOFLAGS="--no-default-features"
 else

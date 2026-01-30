@@ -1,0 +1,114 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index a908609d..1371ee61 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -774,6 +774,7 @@ dependencies = [
+  "fastrand",
+  "html-escape",
+  "image",
++ "instant",
+  "keyboard-types 0.7.0",
+  "linebender_resource_handle",
+  "markup5ever",
+@@ -3586,6 +3587,18 @@ dependencies = [
+  "libc",
+ ]
+ 
++[[package]]
++name = "instant"
++version = "0.1.13"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
++dependencies = [
++ "cfg-if",
++ "js-sys",
++ "wasm-bindgen",
++ "web-sys",
++]
++
+ [[package]]
+ name = "ipnet"
+ version = "2.11.0"
+diff --git a/packages/blitz-dom/Cargo.toml b/packages/blitz-dom/Cargo.toml
+index 55fcac69..545c4964 100644
+--- a/packages/blitz-dom/Cargo.toml
++++ b/packages/blitz-dom/Cargo.toml
+@@ -84,6 +84,7 @@ url = { workspace = true }
+ keyboard-types = { workspace = true }
+ cursor-icon = { workspace = true }
+ thread_local.workspace = true
++instant = { version = "0.1.13", features = ["now", "wasm-bindgen"] }
+ 
+ # HACK: Blitz doesn't need to depend on objc2 directly. But this feature flag is necessary
+ # to prevent debug builds from panicking.
+diff --git a/packages/blitz-dom/src/document.rs b/packages/blitz-dom/src/document.rs
+index 4a3e76aa..db6d2b26 100644
+--- a/packages/blitz-dom/src/document.rs
++++ b/packages/blitz-dom/src/document.rs
+@@ -37,7 +37,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
+ use std::sync::mpsc::{Receiver, Sender, channel};
+ use std::sync::{Arc, Mutex, MutexGuard, RwLockReadGuard, RwLockWriteGuard};
+ use std::task::Context as TaskContext;
+-use std::time::Instant;
++use instant::Instant;
+ use style::Atom;
+ use style::animation::DocumentAnimationSet;
+ use style::attr::{AttrIdentifier, AttrValue};
+diff --git a/packages/blitz-dom/src/events/pointer.rs b/packages/blitz-dom/src/events/pointer.rs
+index 8beb78f7..ccbc8570 100644
+--- a/packages/blitz-dom/src/events/pointer.rs
++++ b/packages/blitz-dom/src/events/pointer.rs
+@@ -1,7 +1,6 @@
+-use std::{
+-    collections::VecDeque,
+-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+-};
++use std::collections::VecDeque;
++use std::time::Duration;
++use instant::{Instant, SystemTime};
+ 
+ use blitz_traits::{
+     events::{
+@@ -173,7 +172,7 @@ pub(crate) fn handle_pointermove<F: FnMut(DomEvent)>(
+ 
+     if let DragMode::Panning(state) = &mut doc.drag_mode {
+         let time_ms = SystemTime::now()
+-            .duration_since(UNIX_EPOCH)
++            .duration_since(SystemTime::UNIX_EPOCH)
+             .unwrap()
+             .as_millis() as u64;
+ 
+@@ -406,7 +405,7 @@ pub(crate) fn handle_pointerup<F: FnMut(DomEvent)>(
+     let do_click = drag_mode == DragMode::None;
+ 
+     let time_ms = SystemTime::now()
+-        .duration_since(UNIX_EPOCH)
++        .duration_since(SystemTime::UNIX_EPOCH)
+         .unwrap()
+         .as_millis() as u64;
+ 
+diff --git a/packages/blitz-dom/src/resolve.rs b/packages/blitz-dom/src/resolve.rs
+index 22b2fc7b..9506a0a0 100644
+--- a/packages/blitz-dom/src/resolve.rs
++++ b/packages/blitz-dom/src/resolve.rs
+@@ -1,9 +1,7 @@
+ //! Resolve style and layout
+ 
+-use std::{
+-    cell::RefCell,
+-    time::{SystemTime, UNIX_EPOCH},
+-};
++use std::cell::RefCell;
++use instant::SystemTime;
+ 
+ use debug_timer::debug_timer;
+ use parley::LayoutContext;
+@@ -121,7 +119,7 @@ impl BaseDocument {
+         match &mut self.scroll_animation {
+             ScrollAnimationState::Fling(fling_state) => {
+                 let time_ms = SystemTime::now()
+-                    .duration_since(UNIX_EPOCH)
++                    .duration_since(SystemTime::UNIX_EPOCH)
+                     .unwrap()
+                     .as_millis() as u64 as f64;
+ 
