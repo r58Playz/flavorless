@@ -87,6 +87,40 @@ index 8beb78f7..ccbc8570 100644
          .unwrap()
          .as_millis() as u64;
  
+diff --git a/packages/blitz-dom/src/node/node.rs b/packages/blitz-dom/src/node/node.rs
+index aaef93fa..bf7c74a2 100644
+--- a/packages/blitz-dom/src/node/node.rs
++++ b/packages/blitz-dom/src/node/node.rs
+@@ -728,6 +728,18 @@ impl Node {
+         s
+     }
+ 
++	pub fn write_inner_html(&self, writer: &mut String) {
++		for &child_id in &self.children {
++			self.tree()[child_id].write_outer_html(writer);
++		}
++	}
++
++    pub fn inner_html(&self) -> String {
++        let mut output = String::new();
++        self.write_inner_html(&mut output);
++        output
++    }
++
+     pub fn outer_html(&self) -> String {
+         let mut output = String::new();
+         self.write_outer_html(&mut output);
+@@ -774,9 +786,7 @@ impl Node {
+                 writer.push('>');
+ 
+                 if has_children {
+-                    for &child_id in &self.children {
+-                        self.tree()[child_id].write_outer_html(writer);
+-                    }
++					self.write_inner_html(writer);
+ 
+                     writer.push_str("</");
+                     writer.push_str(&data.name.local);
 diff --git a/packages/blitz-dom/src/resolve.rs b/packages/blitz-dom/src/resolve.rs
 index 22b2fc7b..9506a0a0 100644
 --- a/packages/blitz-dom/src/resolve.rs

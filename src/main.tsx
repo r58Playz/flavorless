@@ -1,10 +1,12 @@
-import type { FC } from "dreamland/core";
+import { setDomImpl, type FC } from "dreamland/core";
 import { FakeCanvas, type ImageStream } from "./fakecanvas";
 
-import init, { BlitzRenderer } from "../blitz/pkg/blitz_dl";
+import init, { BlitzDocument, BlitzRenderer, type BlitzRendererResult } from "../blitz/pkg/blitz_dl";
 // @ts-ignore
 import blitz_wasm from "../blitz/pkg/blitz_dl.wasm?url";
 import initialHtml from "./initial.html?raw";
+import { BlitzDomNode, createBlitzDomImpl, withHarnessDisabled } from "./blitz-dom";
+import { BlitzApp } from "./blitz-main";
 
 await init({ module_or_path: blitz_wasm });
 
@@ -29,24 +31,26 @@ function SvgState(this: FC<{ state: string }>) {
 	)
 }
 
-function App(this: FC<{}, { state: "initting" | "rendering" | "resize-debounce", dims: [number, number] }>) {
-	this.state = "initting" as any;
+function App(this: FC<{ ret: BlitzRendererResult, ready: () => void, }, { state: "initting" | "rendering" | "resize-debounce", dims: [number, number] }>) {
+	withHarnessDisabled(() => this.state = "initting");
+	let ready = false;
 
 	let pointer: [PointerEvent, number, number][] = [];
 	let wheel: [WheelEvent, number, number][] = [];
 	let key: [KeyboardEvent][] = [];
 
 	let screen: OffscreenCanvas | undefined;
-	let renderer: BlitzRenderer | undefined;
+	let renderer = this.ret[0];
+	let doc = this.ret[1];
 	let stream: ImageStream = (async () => {
-		if (!screen || !renderer) return { done: false };
-		if (this.state === "initting") this.state = "rendering";
+		if (!screen) return { done: false };
+		if (this.state === "initting") withHarnessDisabled(() => this.state = "rendering");
 
-		for (let ev of pointer.splice(0)) renderer.event(renderer.event_pointer(...ev))
-		for (let ev of wheel.splice(0)) renderer.event(renderer.event_wheel(...ev))
-		for (let ev of key.splice(0)) renderer.event(renderer.event_keyboard(...ev))
+		for (let ev of pointer.splice(0)) doc.event(BlitzDocument.event_pointer(...ev))
+		for (let ev of wheel.splice(0)) doc.event(BlitzDocument.event_wheel(...ev))
+		for (let ev of key.splice(0)) doc.event(BlitzDocument.event_keyboard(...ev))
 
-		renderer.render(performance.now());
+		renderer.render(doc, performance.now());
 
 		return { value: screen.transferToImageBitmap(), done: false };
 	}) as any;
@@ -58,7 +62,7 @@ function App(this: FC<{}, { state: "initting" | "rendering" | "resize-debounce",
 
 		let debounce: number | undefined;
 		window.addEventListener("resize", () => {
-			this.state = "resize-debounce";
+			withHarnessDisabled(() => this.state = "resize-debounce");
 			if (debounce) clearTimeout(debounce);
 
 			debounce = setTimeout(() => {
@@ -69,28 +73,41 @@ function App(this: FC<{}, { state: "initting" | "rendering" | "resize-debounce",
 	}
 
 	use(this.dims).constrain(this).listen(async ([width, height]) => {
-		this.state = "initting";
+		withHarnessDisabled(() => this.state = "initting");
+		screen = undefined;
+
 		console.log("creating pipeline with dims", width, height);
-		let lastRenderer = renderer;
-		renderer = undefined;
+		let currentScreen = new OffscreenCanvas(width * SCALE, height * SCALE);
+		await renderer.resize(doc, currentScreen, SCALE);
 
-		screen = new OffscreenCanvas(width * SCALE, height * SCALE);
-		if (!lastRenderer) {
-			lastRenderer = await BlitzRenderer.new(initialHtml, screen, SCALE);
-		} else {
-			await lastRenderer.resize(screen, SCALE);
+		screen = currentScreen;
+
+		if (!ready) {
+			ready = true;
+			this.ready();
 		}
-
-		renderer = lastRenderer;
 	})
 
-	let onEv = <T extends Array<any>, >(arr: T[]) => (...args: T) => arr.push(args);
+	let onEv = <T extends Array<any>,>(arr: T[]) => (...args: T) => arr.push(args);
 
 	return (
 		<div>
-			{use(this.state).map(x => x !== "rendering").and(x => <SvgState state={this.state} />)}
+			{use(this.state).map(x => x !== "rendering").and(_ => <SvgState state={this.state} />)}
 			{use(this.state).map(x => x === "rendering").and(<FakeCanvas stream={stream} pointer={onEv(pointer)} scroll={onEv(wheel)} key={onEv(key)} />)}
 		</div>
 	)
 }
-document.body.replaceWith(<App />);
+
+let renderer = await BlitzRenderer.new(initialHtml, new OffscreenCanvas(1, 1), 1);
+document.body.replaceWith(<App ret={renderer} ready={() => {
+	console.log("ready...");
+	let dom = renderer[1];
+	let impl = createBlitzDomImpl(dom);
+
+	setTimeout(() => {
+		setDomImpl(impl);
+		let app = <BlitzApp /> as any as BlitzDomNode;
+		console.log(app.outerHTML);
+		dom.query_selector("#app")!.replace(dom, app.node);
+	}, 1000);
+}} />);
