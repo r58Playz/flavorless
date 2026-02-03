@@ -9,8 +9,9 @@ mkdir pkg/
 
 if ! [ -d "blitz" ]; then
 	(
-		git clone https://github.com/dioxuslabs/blitz -b 15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8
+		git clone https://github.com/dioxuslabs/blitz
 		cd blitz || exit 1
+		git reset --hard 15fe8ccfbc99cf7254ccfaa6c46e5a1c3a2c1cb8
 		git apply ../blitz.patch
 	)
 fi
