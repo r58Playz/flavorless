@@ -11,7 +11,7 @@ use blitz_traits::{
 };
 use js_sys::Function;
 use keyboard_types::{Code, Key, Location, Modifiers};
-use std::{collections::HashMap, ops::DerefMut, str::FromStr};
+use std::{any::Any, collections::HashMap, mem::transmute, ops::{Deref, DerefMut}, str::FromStr};
 use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
 use web_sys::{Event as JsEvent, KeyboardEvent, PointerEvent, WheelEvent, console};
 
@@ -91,19 +91,19 @@ impl BlitzNode {
 
     pub fn add_event_listener(
         &self,
-        doc: &mut BlitzDocument,
+        events: &mut BlitzEventHandler,
         listener: &str,
         func: Function,
     ) -> Result<(), JsError> {
-        doc.1.add_listener(self.0, listener, func)
+        events.add_listener(self.0, listener, func)
     }
     pub fn remove_event_listener(
         &self,
-        doc: &mut BlitzDocument,
+        events: &mut BlitzEventHandler,
         listener: &str,
         func: Function,
     ) -> Result<(), JsError> {
-        doc.1.remove_listener(self.0, listener, func)
+        events.remove_listener(self.0, listener, func)
     }
 
     pub fn get_data(&self, doc: &BlitzDocument) -> Result<Option<String>, JsError> {
@@ -137,13 +137,22 @@ impl From<&Node> for BlitzNode {
     }
 }
 
-struct BlitzEventHandler {
+#[wasm_bindgen]
+pub struct BlitzEventHandler {
     listeners: HashMap<(usize, u8), Vec<Function>>,
+    temp_override: Option<Function>,
+}
+#[wasm_bindgen]
+impl BlitzEventHandler {
+    pub fn set_doc_overrider(&mut self, func: Function) {
+        self.temp_override = Some(func);
+    }
 }
 impl BlitzEventHandler {
     pub fn new() -> Self {
         Self {
             listeners: HashMap::new(),
+            temp_override: None,
         }
     }
 
@@ -257,9 +266,15 @@ impl EventHandler for &mut BlitzEventHandler {
         &mut self,
         chain: &[usize],
         event: &mut blitz_traits::events::DomEvent,
-        _doc: &mut dyn Document,
+        doc: &mut dyn Document,
         event_state: &mut blitz_traits::events::EventState,
     ) {
+        let doc: &mut HtmlDocument = unsafe { (doc as &mut dyn Any).downcast_mut().unwrap_unchecked() };
+
+		let temp_override_ret = self.temp_override.as_ref().map(|func| {
+			(func, func.call1(&JsValue::NULL, &BlitzDocument::unsafe_with_ref(doc).into()).unwrap())
+		});
+
         'a: for node_id in chain {
             if let Some(listeners) = self
                 .listeners
@@ -298,19 +313,48 @@ impl EventHandler for &mut BlitzEventHandler {
                 }
             }
         }
+
+		if let Some((func, ret)) = temp_override_ret {
+			func.call1(&JsValue::NULL, &ret).unwrap();
+		}
     }
 }
 
 #[wasm_bindgen]
 pub struct BlitzRendererEvent(UiEvent);
 
+enum BlitzDocumentInner {
+	Owned(HtmlDocument),
+	Ref(&'static mut HtmlDocument),
+}
+impl Deref for BlitzDocumentInner {
+	type Target = HtmlDocument;
+	fn deref(&self) -> &Self::Target {
+	    match self {
+			Self::Owned(x) => x,
+			Self::Ref(x) => x,
+		}
+	}
+}
+impl DerefMut for BlitzDocumentInner {
+	fn deref_mut(&mut self) -> &mut Self::Target {
+	    match self {
+			Self::Owned(x) => x,
+			Self::Ref(x) => x,
+		}
+	}
+}
+
 #[wasm_bindgen]
-pub struct BlitzDocument(HtmlDocument, BlitzEventHandler);
+pub struct BlitzDocument(BlitzDocumentInner);
 
 impl BlitzDocument {
     pub fn new(doc: HtmlDocument) -> Self {
-        Self(doc, BlitzEventHandler::new())
+        Self(BlitzDocumentInner::Owned(doc))
     }
+	pub fn unsafe_with_ref(doc: &mut HtmlDocument) -> Self {
+		Self(BlitzDocumentInner::Ref(unsafe { transmute(doc) }))
+	}
 
     pub fn doc(&self) -> &HtmlDocument {
         &self.0
@@ -347,8 +391,8 @@ impl BlitzDocument {
             .map_err(|_| JsError::new("selector failed to parse"))
     }
 
-    pub fn event(&mut self, event: BlitzRendererEvent) {
-        let mut handler = EventDriver::new(&mut self.0, &mut self.1);
+    pub fn event(&mut self, events: &mut BlitzEventHandler, event: BlitzRendererEvent) {
+        let mut handler = EventDriver::new(self.0.deref_mut(), events);
         handler.handle_ui_event(event.0);
     }
 

@@ -9,7 +9,7 @@ use js_sys::Array;
 use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
 use web_sys::OffscreenCanvas;
 
-use crate::{anyrender::VelloScenePainter, canvas::CanvasVelloScene, document::BlitzDocument};
+use crate::{anyrender::VelloScenePainter, canvas::CanvasVelloScene, document::{BlitzDocument, BlitzEventHandler}};
 
 pub mod anyrender;
 pub mod blitz_net;
@@ -20,7 +20,7 @@ pub const CANTARELL_FONT: &[u8] = include_bytes!("../assets/cantarell.otf");
 
 #[wasm_bindgen(typescript_custom_section)]
 const BLITZ_RENDERER_RESULT: &'static str = r#"
-type BlitzRendererResult = [BlitzRenderer, BlitzDocument];
+type BlitzRendererResult = [BlitzRenderer, BlitzDocument, BlitzEventHandler];
 "#;
 
 #[wasm_bindgen]
@@ -52,7 +52,7 @@ impl BlitzRenderer {
         html: String,
         canvas: OffscreenCanvas,
         scale: f32,
-    ) -> anyhow::Result<(BlitzRenderer, BlitzDocument)> {
+    ) -> anyhow::Result<(BlitzRenderer, BlitzDocument, BlitzEventHandler)> {
         let mut font_ctx = FontContext::default();
         font_ctx
             .collection
@@ -77,6 +77,7 @@ impl BlitzRenderer {
                     .context("failed to create vello scene")?,
             },
             BlitzDocument::new(HtmlDocument::from_html(&html, config)),
+			BlitzEventHandler::new(),
         ))
     }
 
@@ -88,7 +89,7 @@ impl BlitzRenderer {
     ) -> Result<BlitzRendererResult, JsError> {
         Self::_new(html, canvas, scale)
             .await
-            .map(|x| JsValue::from(Array::of2(&x.0.into(), &x.1.into())).into())
+            .map(|x| JsValue::from(Array::of3(&x.0.into(), &x.1.into(), &x.2.into())).into())
             .map_err(anyhow_to_obj)
     }
 

@@ -40,15 +40,14 @@ function App(this: FC<{ ret: BlitzRendererResult, ready: () => void, }, { state:
 	let key: [KeyboardEvent][] = [];
 
 	let screen: OffscreenCanvas | undefined;
-	let renderer = this.ret[0];
-	let doc = this.ret[1];
+	let [renderer, doc, events] = this.ret;
 	let stream: ImageStream = (async () => {
 		if (!screen) return { done: false };
 		if (this.state === "initting") withHarnessDisabled(() => this.state = "rendering");
 
-		for (let ev of pointer.splice(0)) doc.event(BlitzDocument.event_pointer(...ev))
-		for (let ev of wheel.splice(0)) doc.event(BlitzDocument.event_wheel(...ev))
-		for (let ev of key.splice(0)) doc.event(BlitzDocument.event_keyboard(...ev))
+		for (let ev of pointer.splice(0)) doc.event(events, BlitzDocument.event_pointer(...ev))
+		for (let ev of wheel.splice(0)) doc.event(events, BlitzDocument.event_wheel(...ev))
+		for (let ev of key.splice(0)) doc.event(events, BlitzDocument.event_keyboard(...ev))
 
 		renderer.render(doc, performance.now());
 
@@ -102,7 +101,8 @@ let renderer = await BlitzRenderer.new(initialHtml, new OffscreenCanvas(1, 1), 1
 document.body.replaceWith(<App ret={renderer} ready={() => {
 	console.log("ready...");
 	let dom = renderer[1];
-	let impl = createBlitzDomImpl(dom);
+	let events = renderer[2];
+	let impl = createBlitzDomImpl(dom, events);
 
 	setTimeout(() => {
 		setDomImpl(impl);

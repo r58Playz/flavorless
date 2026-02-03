@@ -1,6 +1,6 @@
 import type { DomImpl } from "dreamland/core";
 import { getDomImpl } from "dreamland/core";
-import { BlitzDocument, BlitzNode } from "../blitz/pkg/blitz_dl";
+import { BlitzDocument, BlitzEventHandler, BlitzNode } from "../blitz/pkg/blitz_dl";
 
 // @ts-expect-error rrweb-cssom doesn't have types
 import { CSSOM } from "virtual:rrweb-cssom";
@@ -13,37 +13,38 @@ export let withHarnessDisabled = (func: () => void) => {
 };
 let disableHarness = false;
 
+let DOC: BlitzDocument;
+let EVENTS: BlitzEventHandler;
+
 export class BlitzDomNode {
 	node: BlitzNode;
-	doc: BlitzDocument;
 	sheet?: any;
 
-	constructor(node: BlitzNode, doc: BlitzDocument) {
+	constructor(node: BlitzNode) {
 		this.node = node;
-		this.doc = doc;
 	}
 
 	get parentNode(): BlitzDomNode | undefined {
-		let parent = this.node.parent(this.doc);
-		return parent ? new BlitzDomNode(parent, this.doc) : undefined;
+		let parent = this.node.parent(DOC);
+		return parent ? new BlitzDomNode(parent) : undefined;
 	}
 
 	get firstChild(): BlitzDomNode | undefined {
-		let children = this.node.children(this.doc);
-		return children.length > 0 ? new BlitzDomNode(children[0], this.doc) : undefined;
+		let children = this.node.children(DOC);
+		return children.length > 0 ? new BlitzDomNode(children[0]) : undefined;
 	}
 
 	get nextSibling(): BlitzDomNode | undefined {
-		let next = this.node.next_sibling(this.doc);
-		return next ? new BlitzDomNode(next, this.doc) : undefined;
+		let next = this.node.next_sibling(DOC);
+		return next ? new BlitzDomNode(next) : undefined;
 	}
 
 	get childNodes() {
-		return this.node.children(this.doc).map(n => new BlitzDomNode(n, this.doc));
+		return this.node.children(DOC).map(n => new BlitzDomNode(n));
 	}
 
 	appendChild(child: BlitzDomNode) {
-		this.node.append(this.doc, child.node);
+		this.node.append(DOC, child.node);
 		return child;
 	}
 
@@ -52,27 +53,27 @@ export class BlitzDomNode {
 	}
 
 	removeChild(child: BlitzDomNode) {
-		this.node.remove(this.doc, child.node);
+		this.node.remove(DOC, child.node);
 	}
 
 	insertBefore(child: BlitzDomNode, anchor: BlitzDomNode) {
-		this.node.insert(this.doc, child.node, anchor.node);
+		this.node.insert(DOC, child.node, anchor.node);
 	}
 
 	replaceWith(el: BlitzDomNode) {
-		this.node.replace(this.doc, el.node);
+		this.node.replace(DOC, el.node);
 	}
 
 	setAttribute(key: string, value: string) {
-		this.node.set_attribute(this.doc, key, value);
+		this.node.set_attribute(DOC, key, value);
 	}
 
 	removeAttribute(key: string) {
-		this.node.remove_attribute(this.doc, key);
+		this.node.remove_attribute(DOC, key);
 	}
 
 	getAttribute(key: string): string | undefined {
-		return this.node.get_attribute(this.doc, key) ?? undefined;
+		return this.node.get_attribute(DOC, key) ?? undefined;
 	}
 
 	get classList() {
@@ -125,53 +126,62 @@ export class BlitzDomNode {
 	}
 
 	addEventListener(event: string, handler: Function) {
-		this.node.add_event_listener(this.doc, event, handler);
+		this.node.add_event_listener(EVENTS, event, handler);
 	}
 
 	removeEventListener(event: string, handler: Function) {
-		this.node.remove_event_listener(this.doc, event, handler);
+		this.node.remove_event_listener(EVENTS, event, handler);
 	}
 
 	get outerHTML() {
-		return this.node.get_outer_html(this.doc);
+		return this.node.get_outer_html(DOC);
 	}
 
 	get innerHTML() {
-		return this.node.get_inner_html(this.doc);
+		return this.node.get_inner_html(DOC);
 	}
 
 	set innerHTML(value: string) {
-		this.node.set_inner_html(this.doc, value);
+		this.node.set_inner_html(DOC, value);
 	}
 
 	set innerText(value: string) {
 		if (this.sheet) {
 			this.sheet = CSSOM.parse(value);
-			this.node.set_inner_text(this.doc, this.sheet.toString());
+			this.node.set_inner_text(DOC, this.sheet.toString());
 		} else {
-			this.node.set_inner_text(this.doc, value);
+			this.node.set_inner_text(DOC, value);
 		}
 	}
 
 	get data() {
-		return this.node.get_data(this.doc) ?? "";
+		return this.node.get_data(DOC) ?? "";
 	}
 
 	set data(value: string) {
-		this.node.set_data(this.doc, value);
+		this.node.set_data(DOC, value);
 	}
 }
 
-export function createBlitzDomImpl(doc: BlitzDocument): DomImpl {
+export function createBlitzDomImpl(doc: BlitzDocument, events: BlitzEventHandler): DomImpl {
 	let oldImpl = getDomImpl();
+
+	DOC = doc;
+	EVENTS = events;
+
+	events.set_doc_overrider((newDoc: any) => {
+		let old = DOC;
+		DOC = newDoc;
+		return old;
+	})
 
 	return [
 		{
 			createElement(type: string) {
 				if (disableHarness) return document.createElement(type);
 
-				let node = BlitzNode.new(doc, type);
-				let wrapper = new BlitzDomNode(node, doc);
+				let node = BlitzNode.new(DOC, type);
+				let wrapper = new BlitzDomNode(node);
 				
 				if (type === "style") {
 					wrapper.sheet = new CSSOM.CSSStyleSheet();
@@ -182,25 +192,25 @@ export function createBlitzDomImpl(doc: BlitzDocument): DomImpl {
 			createElementNS(ns: string, type: string) {
 				if (disableHarness) return document.createElementNS(ns, type);
 
-				let node = BlitzNode.new_ns(doc, type, ns);
-				return new BlitzDomNode(node, doc);
+				let node = BlitzNode.new_ns(DOC, type, ns);
+				return new BlitzDomNode(node);
 			},
-			head: new BlitzDomNode(doc.query_selector("head")!, doc),
+			head: new BlitzDomNode(DOC.query_selector("head")!),
 		},
 		BlitzDomNode,
 		(text?: any) => {
 			if (disableHarness && text instanceof Node) return text;
 			if (disableHarness) return new Text(text);
 
-			let node = BlitzNode.new_text(doc, String(text ?? ""));
+			let node = BlitzNode.new_text(DOC, String(text ?? ""));
 
-			return new BlitzDomNode(node, doc);
+			return new BlitzDomNode(node);
 		},
 		(text?: any) => {
 			if (disableHarness) return new Comment(text);
 
-			let node = BlitzNode.new_comment(doc);
-			let wrapper = new BlitzDomNode(node, doc);
+			let node = BlitzNode.new_comment(DOC);
+			let wrapper = new BlitzDomNode(node);
 			if (text != null) {
 				wrapper.data = String(text);
 			}

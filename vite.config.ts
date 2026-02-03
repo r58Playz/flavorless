@@ -6,7 +6,6 @@ export default {
 		{
 			name: "cssom-monkeypatch",
 			resolveId(source: string) {
-				console.log("resolve");
 				if (source === "virtual:rrweb-cssom") {
 					return "\0" + source;
 				}
