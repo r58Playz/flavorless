@@ -52,7 +52,7 @@ jobs:
       - name: Build dl
         run: "cd .. && git clone https://github.com/MercuryWorkshop/dreamlandjs dreamland && cd dreamland && pnpm i && pnpm build"
       - name: Build rust
-        run: "cd blitz && bash build.sh"
+        run: "cd blitz && RELEASE=1 bash build.sh"
       - name: Install
         run: "pnpm i"
       - name: Build

@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@types/dom-mediacapture-transform": "^0.1.11",
-    "dreamland": "link:../../dreamland"
+    "dreamland": "link:../dreamland",
+    "rrweb-cssom": "^0.8.0"
   }
 }
