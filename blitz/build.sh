@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 shopt -s inherit_errexit
+shopt -s extglob
 
+rm -r pkg/ out/ || true
 mkdir out/ || true
-rm -r pkg/ || true
 mkdir pkg/
 
 if ! [ -d "blitz" ]; then
@@ -13,6 +14,14 @@ if ! [ -d "blitz" ]; then
 		git apply ../blitz.patch
 	)
 fi
+
+if ! [ -d "fonts" ]; then
+	mkdir fonts
+	cp /usr/share/fonts/noto/NotoSans-!(@(Condensed|SemiCondensed|ExtraCondensed)*) fonts/
+	cp /usr/share/fonts/google-sans-code/* fonts/
+fi
+
+du -sh --apparent-size fonts/
 
 if [ "${MINIMAL:-0}" = "1" ]; then
 	CARGOFLAGS="--no-default-features"
@@ -41,18 +50,9 @@ fi
 mv out/blitz_dl_bg.wasm out/blitz_dl_unoptimized.wasm
 
 if [ "${RELEASE:-0}" = "1" ]; then
-	(
-		G="--generate-global-effects"
-		# shellcheck disable=SC2086
-		time wasm-opt $WASMOPTFLAGS \
-			out/blitz_dl_unoptimized.wasm -o out/blitz_dl_bg.wasm \
-			--converge \
-			$G --type-unfinalizing $G --type-ssa $G -O4 $G --flatten $G --rereloop $G -O4 $G -O4 $G --type-merging $G --type-finalizing $G -O4 \
-			$G --type-unfinalizing $G --type-ssa $G -Oz $G --flatten $G --rereloop $G -Oz $G -Oz $G --type-merging $G --type-finalizing $G -Oz \
-			$G --abstract-type-refining $G --code-folding $G --const-hoisting $G --dae $G --flatten $G --dfo $G --merge-locals $G --merge-similar-functions --type-finalizing \
-			$G --type-unfinalizing $G --type-ssa $G -O4 $G --flatten $G --rereloop $G -O4 $G -O4 $G --type-merging $G --type-finalizing $G -O4 \
-			$G --type-unfinalizing $G --type-ssa $G -Oz $G --flatten $G --rereloop $G -Oz $G -Oz $G --type-merging $G --type-finalizing $G -Oz 
-	)
+	time wasm-opt $WASMOPTFLAGS \
+		out/blitz_dl_unoptimized.wasm -o out/blitz_dl_bg.wasm \
+		-O4 -O4 -O4 -Oz -Oz -Oz -O4
 else
 	mv out/blitz_dl_unoptimized.wasm out/blitz_dl_bg.wasm
 fi

@@ -5,18 +5,23 @@ use blitz_dom::{DocumentConfig, FontContext};
 use blitz_html::HtmlDocument;
 use blitz_traits::shell::{ColorScheme, Viewport};
 use fontique::Blob;
+use include_directory::{Dir, include_directory};
 use js_sys::Array;
 use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
 use web_sys::OffscreenCanvas;
 
-use crate::{anyrender::VelloScenePainter, canvas::CanvasVelloScene, document::{BlitzDocument, BlitzEventHandler}};
+use crate::{
+    anyrender::VelloScenePainter,
+    canvas::CanvasVelloScene,
+    document::{BlitzDocument, BlitzEventHandler},
+};
 
 pub mod anyrender;
 pub mod blitz_net;
 pub mod canvas;
 pub mod document;
 
-pub const CANTARELL_FONT: &[u8] = include_bytes!("../assets/cantarell.otf");
+const FONTS: Dir<'_> = include_directory!("$CARGO_MANIFEST_DIR/fonts");
 
 #[wasm_bindgen(typescript_custom_section)]
 const BLITZ_RENDERER_RESULT: &'static str = r#"
@@ -32,10 +37,6 @@ extern "C" {
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
-}
-
-fn obj_to_anyhow(val: impl Into<JsValue>) -> anyhow::Error {
-    anyhow::Error::msg(format!("{:?}", val.into()))
 }
 
 fn anyhow_to_obj(val: anyhow::Error) -> JsError {
@@ -54,9 +55,19 @@ impl BlitzRenderer {
         scale: f32,
     ) -> anyhow::Result<(BlitzRenderer, BlitzDocument, BlitzEventHandler)> {
         let mut font_ctx = FontContext::default();
-        font_ctx
-            .collection
-            .register_fonts(Blob::new(Arc::new(CANTARELL_FONT)), None);
+        for font in FONTS
+            .find("**/*.ttf")
+            .context("failed to glob compiled in fonts")?
+        {
+            font_ctx.collection.register_fonts(
+                Blob::new(Arc::new(
+                    font.as_file()
+                        .context("compiled in font wasn't a file")?
+                        .contents(),
+                )),
+                None,
+            );
+        }
 
         let config = DocumentConfig {
             font_ctx: Some(font_ctx),
@@ -77,7 +88,7 @@ impl BlitzRenderer {
                     .context("failed to create vello scene")?,
             },
             BlitzDocument::new(HtmlDocument::from_html(&html, config)),
-			BlitzEventHandler::new(),
+            BlitzEventHandler::new(),
         ))
     }
 
