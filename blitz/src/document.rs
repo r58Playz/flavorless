@@ -16,7 +16,7 @@ use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
 use web_sys::{Event as JsEvent, KeyboardEvent, PointerEvent, WheelEvent, console};
 
 #[wasm_bindgen]
-pub struct BlitzNode(usize);
+pub struct BlitzNode(pub usize);
 
 #[wasm_bindgen]
 impl BlitzNode {

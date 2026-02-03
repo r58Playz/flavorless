@@ -15,13 +15,20 @@ let disableHarness = false;
 
 let DOC: BlitzDocument;
 let EVENTS: BlitzEventHandler;
+let CACHE = new Map<number, WeakRef<BlitzDomNode>>();
 
 export class BlitzDomNode {
-	node: BlitzNode;
+	node: BlitzNode = null!;
 	sheet?: any;
 
 	constructor(node: BlitzNode) {
+		let cached;
+		if (cached = CACHE.get(node[0])?.deref()) {
+			return cached;
+		}
+
 		this.node = node;
+		CACHE.set(node[0], new WeakRef(this));
 	}
 
 	get parentNode(): BlitzDomNode | undefined {
