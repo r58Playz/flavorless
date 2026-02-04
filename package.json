@@ -13,6 +13,7 @@
     "vite": "^7.2.4"
   },
   "dependencies": {
+    "@mercuryworkshop/epoxy-tls": "2.1.19-1",
     "@types/dom-mediacapture-transform": "^0.1.11",
     "dreamland": "link:../dreamland",
     "rrweb-cssom": "^0.8.0"

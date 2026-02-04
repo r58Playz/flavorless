@@ -17,12 +17,11 @@ console_error_panic_hook = "0.1.7"
 data-url = "0.2"
 # hacky
 fontique = { git = "https://github.com/linebender/parley", rev = "4f1bedf08c9d98a646975806adccc6ca41a08841" }
-include_directory = { version = "0.1.1", features = ["glob"] }
 js-sys = "0.3.85"
 keyboard-types = "0.7.0"
-reqwest = { version = "0.12", features = ["charset", "rustls-tls", "multipart"] }
+thiserror = "2.0.18"
 vello = "0.7.0"
 wasm-bindgen = "0.2.108"
 wasm-bindgen-futures = "0.4.58"
-web-sys = { version = "0.3.85", features = ["OffscreenCanvas", "WebGl2RenderingContext", "PointerEvent", "MouseEvent", "KeyboardEvent", "WheelEvent", "console"] }
+web-sys = { version = "0.3.85", features = ["OffscreenCanvas", "WebGl2RenderingContext", "PointerEvent", "MouseEvent", "KeyboardEvent", "WheelEvent", "console", "Request", "RequestInit", "FormData", "UrlSearchParams"] }
 wgpu = { version = "27.0.1", default-features = false, features = ["fragile-send-sync-non-atomic-wasm", "web"] }

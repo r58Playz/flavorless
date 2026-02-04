@@ -1,46 +1,116 @@
-//! Networking (HTTP, filesystem, Data URIs) for Blitz with WASM support
-//!
-//! Provides an implementation of the [`blitz_traits::net::NetProvider`] trait
-//! with wasm-bindgen-futures integration and always-enabled caching.
-
-use blitz_traits::net::{Body, Bytes, NetHandler, NetProvider, NetWaker, Request};
+use blitz_traits::net::{
+	Body, Bytes, Entry, EntryValue, HeaderMap, NetHandler, NetProvider, Request as BlitzRequest,
+	http,
+};
 use data_url::DataUrl;
-use std::sync::Arc;
-use wasm_bindgen_futures::spawn_local;
+use js_sys::{Array, Function, JsString, Object, Promise, Uint8Array};
+use thiserror::Error;
+use wasm_bindgen::{JsCast, JsValue, prelude::wasm_bindgen};
+use wasm_bindgen_futures::{JsFuture, spawn_local};
+use web_sys::{FormData, Request, RequestInit, UrlSearchParams, console};
 
-const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:60.0) Gecko/20100101 Firefox/81.0";
+#[wasm_bindgen(typescript_custom_section)]
+const BLITZ_FETCHER_FUNCTION: &'static str = r#"
+type BlitzFetcherFunction = (req: Request) => Promise<[String, Uint8Aray]>;
+"#;
 
-pub struct Provider {
-	client: reqwest::Client,
-	waker: Arc<dyn NetWaker>,
+#[wasm_bindgen]
+extern "C" {
+	#[wasm_bindgen(typescript_type = "BlitzFetcherFunction")]
+	pub type BlitzFetcherFunction;
+}
+
+#[derive(Debug, Error)]
+enum ProviderError {
+	#[error("DataUrl: {0:?}")]
+	DataUrl(data_url::DataUrlError),
+	#[error("DataUrlBase64: {0:?}")]
+	DataUrlBase64(data_url::forgiving_base64::InvalidBase64),
+	#[error("HeaderToStr: {0:?}")]
+	ToStrError(http::header::ToStrError),
+	#[error("{0}")]
+	Js(String),
+}
+impl From<http::header::ToStrError> for ProviderError {
+	fn from(value: http::header::ToStrError) -> Self {
+		Self::ToStrError(value)
+	}
+}
+impl From<data_url::DataUrlError> for ProviderError {
+	fn from(value: data_url::DataUrlError) -> Self {
+		Self::DataUrl(value)
+	}
+}
+impl From<data_url::forgiving_base64::InvalidBase64> for ProviderError {
+	fn from(value: data_url::forgiving_base64::InvalidBase64) -> Self {
+		Self::DataUrlBase64(value)
+	}
+}
+impl From<JsValue> for ProviderError {
+	fn from(value: JsValue) -> Self {
+		Self::Js(format!("{value:?}"))
+	}
+}
+
+pub struct Provider(BlitzFetcherFunction);
+unsafe impl Send for Provider {}
+unsafe impl Sync for Provider {}
+
+impl Provider {
+	pub fn new(fetcher: BlitzFetcherFunction) -> Self {
+		Self(fetcher)
+	}
 }
 
 impl Provider {
-	pub fn new(waker: Option<Arc<dyn NetWaker>>) -> Self {
-		let builder = reqwest::Client::builder();
-		let client = builder.build().unwrap();
+	fn get_headers(map: HeaderMap, content_ty: &str) -> Result<JsValue, ProviderError> {
+		let array = Array::new();
 
-		let waker = waker.unwrap_or(Arc::new(DummyNetWaker));
-		Self { client, waker }
+		for key in map.keys() {
+			let key_js = key.to_string().into();
+			for val in map.get_all(key) {
+				array.push(&Array::of2(&key_js, &val.to_str()?.into()));
+			}
+		}
+		array.push(&Array::of2(&"Content-Type".into(), &content_ty.into()).into());
+
+		Ok(Object::from_entries(&array.into())?.into())
 	}
 
-	pub fn shared(waker: Option<Arc<dyn NetWaker>>) -> Arc<dyn NetProvider> {
-		Arc::new(Self::new(waker))
+	fn get_body(body: Body, formdata: bool) -> Result<JsValue, ProviderError> {
+		Ok(match body {
+			Body::Form(mut form) if formdata => {
+				let js = FormData::new()?;
+				for Entry { name, value } in form.0.drain(..) {
+					match value {
+						EntryValue::String(value) => js.set_with_str(&name, &value)?,
+						_ => {
+							console::warn_1(&"invalid formdata type, skipping".into());
+						}
+					}
+				}
+				js.into()
+			}
+			Body::Form(mut form) => {
+				let js = UrlSearchParams::new()?;
+				for Entry { name, value } in form.0.drain(..) {
+					match value {
+						EntryValue::String(value) => js.set(&name, &value),
+						_ => {
+							console::warn_1(&"invalid formdata type, skipping".into());
+						}
+					}
+				}
+				js.into()
+			}
+			Body::Bytes(bytes) => Uint8Array::new_from_slice(&bytes).into(),
+			Body::Empty => JsValue::UNDEFINED,
+		})
 	}
 
-	pub fn is_empty(&self) -> bool {
-		Arc::strong_count(&self.waker) == 1
-	}
-
-	pub fn count(&self) -> usize {
-		Arc::strong_count(&self.waker) - 1
-	}
-}
-
-impl Provider {
 	async fn fetch_inner(
-		client: reqwest::Client,
-		request: Request,
+		fetcher: BlitzFetcherFunction,
+		request: BlitzRequest,
 	) -> Result<(String, Bytes), ProviderError> {
 		Ok(match request.url.scheme() {
 			"data" => {
@@ -48,139 +118,43 @@ impl Provider {
 				let decoded = data_url.decode_to_vec()?;
 				(request.url.to_string(), Bytes::from(decoded.0))
 			}
-			"file" => {
-				let file_content = std::fs::read(request.url.path())?;
-				(request.url.to_string(), Bytes::from(file_content))
-			}
 			_ => {
-				let response = client
-					.request(request.method, request.url)
-					.headers(request.headers)
-					.header("Content-Type", request.content_type.as_str())
-					.header("User-Agent", USER_AGENT)
-					.apply_body(request.body, request.content_type.as_str())
-					.await
-					.send()
-					.await?;
+				let func = fetcher.unchecked_into::<Function>();
+				let init = RequestInit::new();
+				init.set_method(&request.method.to_string());
+				init.set_headers(&Self::get_headers(request.headers, &request.content_type)?);
+				init.set_body(&Self::get_body(
+					request.body,
+					request.content_type == "multipart/form-data",
+				)?);
 
-				(response.url().to_string(), response.bytes().await?)
+				let req = Request::new_with_str_and_init(&request.url.to_string(), &init)?;
+
+				let promise: Promise = func.call1(&JsValue::NULL, &req.into())?.unchecked_into();
+				let res: Array = JsFuture::from(promise).await?.unchecked_into();
+				let url: JsString = res.at(0).unchecked_into();
+				let bytes: Uint8Array = res.at(1).unchecked_into();
+
+				(url.into(), bytes.to_vec().into())
 			}
 		})
-	}
-
-	#[allow(clippy::type_complexity)]
-	pub fn fetch_with_callback(
-		&self,
-		request: Request,
-		callback: Box<dyn FnOnce(Result<(String, Bytes), ProviderError>) + Send + Sync + 'static>,
-	) {
-		let client = self.client.clone();
-		spawn_local(async move {
-			let result = Self::fetch_inner(client, request).await;
-			callback(result);
-		});
-	}
-
-	pub async fn fetch_async(&self, request: Request) -> Result<(String, Bytes), ProviderError> {
-		let client = self.client.clone();
-		Self::fetch_inner(client, request).await
 	}
 }
 
 impl NetProvider for Provider {
-	fn fetch(&self, doc_id: usize, request: Request, handler: Box<dyn NetHandler>) {
-		let client = self.client.clone();
-		let waker = self.waker.clone();
-
+	fn fetch(&self, _doc_id: usize, request: BlitzRequest, handler: Box<dyn NetHandler>) {
+		let func = self.0.clone();
 		spawn_local(async move {
-			let result = Self::fetch_inner(client, request).await;
-
-			// Call the waker to notify of completed network request
-			waker.wake(doc_id);
+			let result = Self::fetch_inner(func.into(), request).await;
 
 			match result {
 				Ok((response_url, bytes)) => {
 					handler.bytes(response_url, bytes);
 				}
-				Err(_) => {
-					// Error handling
+				Err(x) => {
+					console::warn_2(&"fetch failed:".into(), &x.to_string().into());
 				}
 			};
 		});
 	}
-}
-
-#[derive(Debug)]
-pub enum ProviderError {
-	Io(std::io::Error),
-	DataUrl(data_url::DataUrlError),
-	DataUrlBase64(data_url::forgiving_base64::InvalidBase64),
-	ReqwestError(reqwest::Error),
-}
-
-impl From<std::io::Error> for ProviderError {
-	fn from(value: std::io::Error) -> Self {
-		Self::Io(value)
-	}
-}
-
-impl From<data_url::DataUrlError> for ProviderError {
-	fn from(value: data_url::DataUrlError) -> Self {
-		Self::DataUrl(value)
-	}
-}
-
-impl From<data_url::forgiving_base64::InvalidBase64> for ProviderError {
-	fn from(value: data_url::forgiving_base64::InvalidBase64) -> Self {
-		Self::DataUrlBase64(value)
-	}
-}
-
-impl From<reqwest::Error> for ProviderError {
-	fn from(value: reqwest::Error) -> Self {
-		Self::ReqwestError(value)
-	}
-}
-
-trait ReqwestExt {
-	async fn apply_body(self, body: Body, content_type: &str) -> Self;
-}
-
-impl ReqwestExt for reqwest::RequestBuilder {
-	async fn apply_body(self, body: Body, content_type: &str) -> Self {
-		match body {
-			Body::Bytes(bytes) => self.body(bytes),
-			Body::Form(form_data) => match content_type {
-				"application/x-www-form-urlencoded" => self.form(&form_data),
-				"multipart/form-data" => {
-					use blitz_traits::net::{Entry, EntryValue};
-					let mut form_data = form_data;
-					let mut form = reqwest::multipart::Form::new();
-					for Entry { name, value } in form_data.0.drain(..) {
-						form = match value {
-							EntryValue::String(value) => form.text(name, value),
-							EntryValue::File(_) => {
-								// File uploads not supported in WASM environment
-								form
-							}
-							EntryValue::EmptyFile => form.part(
-								name,
-								reqwest::multipart::Part::bytes(&[])
-									.mime_str("application/octet-stream")
-									.unwrap(),
-							),
-						};
-					}
-					self.multipart(form)
-				}
-				_ => self,
-			},
-			Body::Empty => self,
-		}
-	}
-}
-
-struct DummyNetWaker;
-impl NetWaker for DummyNetWaker {
-	fn wake(&self, _client_id: usize) {}
 }

@@ -4,9 +4,9 @@ export function BlitzApp(this: FC<{}, { count: number }>) {
 	this.count = 0;
 	return (
 		<div>
-			<div class="title">dreamland.js in Blitz loaded!</div>
+			<div class="title">dreamland.js</div>
 			<p>
-				Counter app!
+				dreamland.js in Blitz loaded!
 			</p>
 			<button on:click={() => this.count++}>Count: {use(this.count)}</button>
 		</div>
@@ -15,5 +15,6 @@ export function BlitzApp(this: FC<{}, { count: number }>) {
 BlitzApp.style = css`
 	.title {
 		font-size: 2rem;
+		font-family: Rajdhani;
 	}
 `;

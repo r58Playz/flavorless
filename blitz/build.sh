@@ -16,14 +16,6 @@ if ! [ -d "blitz" ]; then
 	)
 fi
 
-if ! [ -d "fonts" ]; then
-	mkdir fonts
-	cp /usr/share/fonts/noto/NotoSans-!(@(Condensed|SemiCondensed|ExtraCondensed)*) fonts/
-	cp /usr/share/fonts/google-sans-code/* fonts/
-fi
-
-du -sh --apparent-size fonts/
-
 if [ "${MINIMAL:-0}" = "1" ]; then
 	CARGOFLAGS="--no-default-features"
 else
