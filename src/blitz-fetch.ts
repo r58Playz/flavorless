@@ -5,7 +5,7 @@ import epoxyWasm from "../node_modules/@mercuryworkshop/epoxy-tls/minimal/epoxy.
 let initted = false;
 let client: EpoxyClient | undefined;
 let clientPromiseResolve = () => {};
-let clientPromise = new Promise(r => clientPromiseResolve = r);
+let clientPromise = new Promise<void>(r => clientPromiseResolve = r);
 let inflight = 0;
 
 export async function initBlitzNet(wisp: string) {

@@ -17,6 +17,7 @@ console_error_panic_hook = "0.1.7"
 data-url = "0.2"
 # hacky
 fontique = { git = "https://github.com/linebender/parley", rev = "4f1bedf08c9d98a646975806adccc6ca41a08841" }
+image = { version = "0.25.6", features = ["default-formats"] }
 js-sys = "0.3.85"
 keyboard-types = "0.7.0"
 thiserror = "2.0.18"

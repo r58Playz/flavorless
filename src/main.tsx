@@ -4,10 +4,12 @@ import { FakeCanvas, type ImageStream } from "./fakecanvas";
 import init, { BlitzDocument, BlitzRenderer, type BlitzRendererResult } from "../blitz/pkg/blitz_dl";
 // @ts-ignore
 import blitz_wasm from "../blitz/pkg/blitz_dl.wasm?url";
-import initialHtml from "./initial.html?raw";
 import { BlitzDomNode, createBlitzDomImpl, withHarnessDisabled } from "./blitz-dom";
 import { BlitzApp } from "./blitz-main";
 import { blitzFetch, blitzInflight, initBlitzNet } from "./blitz-fetch";
+
+import initialHtml from "./initial.html?raw";
+import flavortownHtml from "./flavortown.html?raw";
 
 let SCALE = Math.ceil(window.devicePixelRatio);
 
@@ -146,9 +148,12 @@ function App(this: FC<{
 }
 
 try {
+	let flavortown = location.search === "?flavortown";
 	await init({ module_or_path: blitz_wasm });
-	let renderer = await BlitzRenderer.new(initialHtml, location.origin, blitzFetch, new OffscreenCanvas(1, 1), 1);
+	let renderer = await BlitzRenderer.new(flavortown ? flavortownHtml : initialHtml, "https://dreamland.js.org/", blitzFetch, new OffscreenCanvas(1, 1), 1);
 	document.body.replaceWith(<App wisp="wss://anura.pro/" ret={renderer} ready={() => {
+		if (flavortown) return;
+
 		console.log("ready...");
 		let dom = renderer[1];
 		let events = renderer[2];
