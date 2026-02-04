@@ -128,19 +128,141 @@ impl BlitzRenderer {
 			.map_err(anyhow_to_obj)
 	}
 
+	fn loader(width: u32, scale: f32, time: f64, scene: &mut vello::Scene) -> u32 {
+		use vello::{
+			kurbo::{Affine, Rect},
+			peniko::{Color, Fill},
+		};
+
+		let bar_height = 8.0 * scale as f64;
+		let cycle_time = 1750.0; // 1.75 seconds
+		let progress = (time % cycle_time) / cycle_time;
+
+		// Helper to interpolate keyframe values
+		let keyframe = |t: f64, keyframes: &[(f64, f64)]| -> f64 {
+			for i in 0..keyframes.len() - 1 {
+				let (t1, v1) = keyframes[i];
+				let (t2, v2) = keyframes[i + 1];
+				if t >= t1 && t < t2 {
+					let local = (t - t1) / (t2 - t1);
+					return v1 + (v2 - v1) * local;
+				}
+			}
+			keyframes[keyframes.len() - 1].1
+		};
+
+		// Bar 1 animations
+		let bar1_right = keyframe(
+			progress,
+			&[(0.0, 1.0), (0.5714, 0.0), (0.7142, 0.0), (1.0, 1.0)],
+		);
+		let bar1_left = keyframe(
+			progress,
+			&[(0.0, 0.0), (0.1429, 0.0), (0.7142, 1.0), (1.0, 0.0)],
+		);
+
+		// Bar 2 animations
+		let bar2_right = keyframe(
+			progress,
+			&[(0.0, 1.0), (0.3714, 1.0), (0.8571, 0.0), (1.0, 0.0)],
+		);
+		let bar2_left = keyframe(progress, &[(0.0, 0.0), (0.5143, 0.0), (1.0, 1.0)]);
+
+		// Track 1 animations
+		let track1_left = keyframe(progress, &[(0.0, 0.0), (0.5714, 1.0), (1.0, 1.0)]);
+		let track1_right = 0.0;
+
+		// Track 2 animations
+		let track2_left = keyframe(
+			progress,
+			&[(0.0, 0.0), (0.3714, 0.0), (0.8571, 1.0), (1.0, 1.0)],
+		);
+		let track2_right = keyframe(
+			progress,
+			&[
+				(0.0, 1.0),
+				(0.1429, 1.0),
+				(0.7142, 0.0),
+				(0.8571, 0.0),
+				(1.0, 1.0),
+			],
+		);
+
+		// Track 3 animations
+		let track3_left = 0.0;
+		let track3_right = keyframe(progress, &[(0.0, 1.0), (0.5143, 1.0), (1.0, 0.0)]);
+
+		let margin = 4.0 * scale as f64;
+		let w = width as f64;
+
+		// Colors (approximating M3 secondary-container and primary)
+		let track_color = Color::from_rgba8(0, 0, 0, 0);
+		let bar_color = Color::from_rgb8(100, 150, 255);
+
+		// Draw tracks (background)
+		let track1_x = w * track1_left + margin;
+		let track1_w = w * track1_right - track1_x;
+		if track1_w > 0.0 {
+			let rect = Rect::new(track1_x, 0.0, track1_x + track1_w, bar_height);
+			scene.fill(Fill::NonZero, Affine::IDENTITY, track_color, None, &rect);
+		}
+
+		let track2_x = w * track2_left + margin;
+		let track2_w = w - w * track2_right - track2_x - margin;
+		if track2_w > 0.0 {
+			let rect = Rect::new(track2_x, 0.0, track2_x + track2_w, bar_height);
+			scene.fill(Fill::NonZero, Affine::IDENTITY, track_color, None, &rect);
+		}
+
+		let track3_x = w * track3_left;
+		let track3_w = w * (1.0 - track3_right) - track3_x - margin;
+		if track3_w > 0.0 {
+			let rect = Rect::new(track3_x, 0.0, track3_x + track3_w, bar_height);
+			scene.fill(Fill::NonZero, Affine::IDENTITY, track_color, None, &rect);
+		}
+
+		// Draw bars (foreground)
+		let bar1_x = w * bar1_left;
+		let bar1_w = w - w * bar1_right - bar1_x;
+		if bar1_w > 0.0 {
+			let rect = Rect::new(bar1_x, 0.0, bar1_x + bar1_w, bar_height);
+			scene.fill(Fill::NonZero, Affine::IDENTITY, bar_color, None, &rect);
+		}
+
+		let bar2_x = w * bar2_left;
+		let bar2_w = w - w * bar2_right - bar2_x;
+		if bar2_w > 0.0 {
+			let rect = Rect::new(bar2_x, 0.0, bar2_x + bar2_w, bar_height);
+			scene.fill(Fill::NonZero, Affine::IDENTITY, bar_color, None, &rect);
+		}
+
+        bar_height as u32
+	}
+
 	#[wasm_bindgen]
-	pub fn render(&mut self, doc: &mut BlitzDocument, time: f64) -> Result<(), JsError> {
+	pub fn render(
+		&mut self,
+		doc: &mut BlitzDocument,
+		loading: bool,
+		time: f64,
+	) -> Result<(), JsError> {
 		doc.resolve(time);
 		self.scene
 			.render(|scene, width, height, scale| {
+                let offset = if loading {
+                    Self::loader(width, scale, time, scene)
+                } else {
+                    0
+                };
+
 				blitz_paint::paint_scene(
 					&mut VelloScenePainter::new(scene),
 					doc.doc(),
 					scale as f64,
 					width,
-					height,
+					height - offset,
 					0,
-					0,
+					offset,
 				);
 			})
 			.map_err(anyhow_to_obj)

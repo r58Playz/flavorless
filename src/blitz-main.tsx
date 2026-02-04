@@ -4,7 +4,7 @@ export function BlitzApp(this: FC<{}, { count: number }>) {
 	this.count = 0;
 	return (
 		<div>
-			<div class="title">dreamland.js</div>
+			<div class="title">dreamland.js in Rajdhani</div>
 			<p>
 				dreamland.js in Blitz loaded!
 			</p>

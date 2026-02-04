@@ -7,7 +7,7 @@ import blitz_wasm from "../blitz/pkg/blitz_dl.wasm?url";
 import initialHtml from "./initial.html?raw";
 import { BlitzDomNode, createBlitzDomImpl, withHarnessDisabled } from "./blitz-dom";
 import { BlitzApp } from "./blitz-main";
-import { blitzFetch, initBlitzNet } from "./blitz-fetch";
+import { blitzFetch, blitzInflight, initBlitzNet } from "./blitz-fetch";
 
 let SCALE = Math.ceil(window.devicePixelRatio);
 
@@ -77,7 +77,7 @@ function App(this: FC<{
 		for (let ev of wheel.splice(0)) doc.event(events, BlitzDocument.event_wheel(...ev))
 		for (let ev of key.splice(0)) doc.event(events, BlitzDocument.event_keyboard(...ev))
 
-		renderer.render(doc, performance.now());
+		renderer.render(doc, blitzInflight(), performance.now());
 
 		return { value: screen.transferToImageBitmap(), done: false };
 	}) as any;
@@ -103,13 +103,12 @@ function App(this: FC<{
 
 		let debounce: number | undefined;
 		window.addEventListener("resize", () => {
-			withHarnessDisabled(() => this.state = "resize-debounce");
 			if (debounce) clearTimeout(debounce);
 
 			debounce = setTimeout(() => {
 				debounce = undefined;
 				this.dims = [html.clientWidth, html.clientHeight];
-			}, 1000)
+			}, 500)
 		})
 	}
 	this.cx.mount = init;
@@ -160,7 +159,7 @@ try {
 			let app = <BlitzApp /> as any as BlitzDomNode;
 			console.log(app.outerHTML);
 			dom.query_selector("#app")!.replace(dom, app.node);
-		}, 1000);
+		}, 100);
 	}} />);
 } catch (err) {
 	console.error(err);
