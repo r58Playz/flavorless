@@ -135,6 +135,10 @@ impl BlitzNode {
 	pub fn get_outer_html(&self, doc: &BlitzDocument) -> Result<String, JsError> {
 		Ok(doc.node(self)?.outer_html())
 	}
+
+	pub fn get_debug_string(&self, doc: &mut BlitzDocument) -> Result<String, JsError> {
+		Ok(format!("{:#?}", doc.node(self)?))
+	}
 }
 
 impl From<&Node> for BlitzNode {
@@ -380,10 +384,6 @@ impl BlitzDocument {
 		self.0.viewport_mut()
 	}
 
-	pub fn resolve(&mut self, time: f64) {
-		self.0.resolve(time);
-	}
-
 	pub fn mutator(&mut self) -> DocumentMutator<'_> {
 		DocumentMutator::new(&mut self.0)
 	}
@@ -391,8 +391,15 @@ impl BlitzDocument {
 
 #[wasm_bindgen]
 impl BlitzDocument {
+	pub fn resolve(&mut self, time: f64) {
+		self.0.resolve(time);
+	}
+
 	pub fn root(&self) -> BlitzNode {
 		self.0.root_node().into()
+	}
+	pub fn focused(&self) -> Option<BlitzNode> {
+		self.0.get_focussed_node_id().map(BlitzNode)
 	}
 
 	pub fn query_selector(&self, selector: &str) -> Result<Option<BlitzNode>, JsError> {
@@ -400,6 +407,15 @@ impl BlitzDocument {
 			.query_selector(selector)
 			.map(|x| x.map(BlitzNode))
 			.map_err(|_| JsError::new("selector failed to parse"))
+	}
+
+	pub fn add_style(&mut self, css: &str) {
+		self.0.add_user_agent_stylesheet(css);
+	} 
+
+	pub fn toggle_devtools(&mut self) {
+		self.0.devtools_mut().toggle_highlight_hover();
+		self.0.devtools_mut().toggle_show_layout();
 	}
 
 	pub fn event(&mut self, events: &mut BlitzEventHandler, event: BlitzRendererEvent) {

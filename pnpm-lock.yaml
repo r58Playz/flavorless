@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@ktibow/iconset-material-symbols':
+        specifier: ^0.0.1764827375
+        version: 0.0.1764827375
       '@mercuryworkshop/epoxy-tls':
         specifier: 2.1.19-1
         version: 2.1.19-1
@@ -17,6 +20,9 @@ importers:
       dreamland:
         specifier: link:../dreamland
         version: link:../dreamland
+      m3-dreamland:
+        specifier: link:../m3-dreamland
+        version: link:../m3-dreamland
       rrweb-cssom:
         specifier: ^0.8.0
         version: 0.8.0
@@ -185,6 +191,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@iconify/types@2.0.0':
+    resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
+
+  '@ktibow/iconset-material-symbols@0.0.1764827375':
+    resolution: {integrity: sha512-D5r08cbHpLn+G2G03Zj3nV0afQpS/IV4kD0g7rDHpU4k7tC/CUt6+PbddKISTWz8u+SRPQNaR5cZU0e9IlUoWg==}
 
   '@mercuryworkshop/epoxy-tls@2.1.19-1':
     resolution: {integrity: sha512-lF3WVDmKDWfClgFaDm1OAGI6PStcUUKUjNh2AJbfmLXEGh+dT4nvsuTY2QGRImnajCboIRyrpx9eGNY0egZSVg==}
@@ -511,6 +523,12 @@ snapshots:
 
   '@esbuild/win32-x64@0.27.2':
     optional: true
+
+  '@iconify/types@2.0.0': {}
+
+  '@ktibow/iconset-material-symbols@0.0.1764827375':
+    dependencies:
+      '@iconify/types': 2.0.0
 
   '@mercuryworkshop/epoxy-tls@2.1.19-1': {}
 

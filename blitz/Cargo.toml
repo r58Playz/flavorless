@@ -26,3 +26,17 @@ wasm-bindgen = "0.2.108"
 wasm-bindgen-futures = "0.4.58"
 web-sys = { version = "0.3.85", features = ["OffscreenCanvas", "WebGl2RenderingContext", "PointerEvent", "MouseEvent", "KeyboardEvent", "WheelEvent", "console", "Request", "RequestInit", "FormData", "UrlSearchParams"] }
 wgpu = { version = "27.0.1", default-features = false, features = ["fragile-send-sync-non-atomic-wasm", "web"] }
+
+[patch.crates-io]
+stylo = { path = "./stylo/style" }
+stylo_atoms = { path = "./stylo/stylo_atoms" }
+stylo_config = { path = "./stylo/stylo_config" }
+stylo_derive = { path = "./stylo/style_derive" }
+stylo_dom = { path = "./stylo/stylo_dom" }
+stylo_malloc_size_of = { path = "./stylo/malloc_size_of" }
+stylo_static_prefs = { path = "./stylo/stylo_static_prefs" }
+stylo_traits = { path = "./stylo/style_traits" }
+selectors = { path = "./stylo/selectors" }
+servo_arc = { path = "./stylo/servo_arc" }
+to_shmem = { path = "./stylo/to_shmem" }
+to_shmem_derive = { path = "./stylo/to_shmem_derive" }

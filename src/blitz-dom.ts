@@ -19,7 +19,55 @@ let CACHE = new Map<number, WeakRef<BlitzDomNode>>();
 
 export class BlitzDomNode {
 	node: BlitzNode = null!;
-	sheet?: any;
+	_sheet?: any;
+
+	_style = new CSSOM.CSSStyleDeclaration();
+
+	set sheet(sheet: any) { this._sheet = sheet; }
+	get sheet() {
+		if (!this._sheet) return undefined;
+		let self = this;
+
+		let proxy = (target: any) => {
+			if (!(target instanceof Object)) return target;
+			return new Proxy(target, {
+				get(target, p, receiver) {
+					return proxy(Reflect.get(target, p, receiver));
+				},
+				set(target, p, newValue, receiver) {
+					let ret = Reflect.set(target, p, newValue, receiver);
+					if (ret)
+						self.node.set_inner_text(DOC, self._sheet.toString());
+					return ret;
+				},
+			});
+		}
+		return proxy(this._sheet);
+	}
+
+	get style() {
+		let self = this;
+
+		let proxy = (target: any) => {
+			if (!(target instanceof Object)) return target;
+			return new Proxy(target, {
+				get(target, p, receiver) {
+					return proxy(Reflect.get(target, p, receiver));
+				},
+				set(target, p, newValue, receiver) {
+					let ret = Reflect.set(target, p, newValue, receiver);
+					self.setAttribute("style", self._style.cssText)
+					return ret;
+				},
+				apply(target, thisArg, argArray) {
+					let ret = Reflect.apply(target, thisArg, argArray);
+					self.setAttribute("style", self._style.cssText)
+					return ret;
+				},
+			});
+		}
+		return proxy(this._style);
+	}
 
 	constructor(node: BlitzNode) {
 		let cached;
@@ -72,7 +120,7 @@ export class BlitzDomNode {
 	}
 
 	setAttribute(key: string, value: string) {
-		this.node.set_attribute(DOC, key, value);
+		this.node.set_attribute(DOC, key, ""+value);
 	}
 
 	removeAttribute(key: string) {
@@ -88,7 +136,7 @@ export class BlitzDomNode {
 			const classAttr = this.getAttribute("class") || "";
 			return classAttr.split(/\s+/).filter(c => c);
 		};
-		
+
 		return {
 			add: (...tokens: string[]) => {
 				const current = new Set(getClasses());
@@ -126,7 +174,7 @@ export class BlitzDomNode {
 			get length() { return getClasses().length; },
 			item: (index: number) => getClasses()[index] ?? null,
 			toString: () => this.getAttribute("class") || "",
-			[Symbol.iterator]: function*() {
+			[Symbol.iterator]: function* () {
 				yield* getClasses();
 			}
 		};
@@ -161,6 +209,10 @@ export class BlitzDomNode {
 		}
 	}
 
+	set textContent(value: string) {
+		this.innerText = value;
+	}
+
 	get data() {
 		return this.node.get_data(DOC) ?? "";
 	}
@@ -189,11 +241,11 @@ export function createBlitzDomImpl(doc: BlitzDocument, events: BlitzEventHandler
 
 				let node = BlitzNode.new(DOC, type);
 				let wrapper = new BlitzDomNode(node);
-				
+
 				if (type === "style") {
 					wrapper.sheet = new CSSOM.CSSStyleSheet();
 				}
-				
+
 				return wrapper;
 			},
 			createElementNS(ns: string, type: string) {

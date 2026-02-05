@@ -1,7 +1,7 @@
-import { setDomImpl, type FC } from "dreamland/core";
+import { createDelegate, setDomImpl, type FC } from "dreamland/core";
 import { FakeCanvas, type ImageStream } from "./fakecanvas";
 
-import init, { BlitzDocument, BlitzRenderer, type BlitzRendererResult } from "../blitz/pkg/blitz_dl";
+import init, { BlitzDocument, BlitzRenderer, BlitzShellProvider, type BlitzRendererResult } from "../blitz/pkg/blitz_dl";
 // @ts-ignore
 import blitz_wasm from "../blitz/pkg/blitz_dl.wasm?url";
 import { BlitzDomNode, createBlitzDomImpl, withHarnessDisabled } from "./blitz-dom";
@@ -10,6 +10,7 @@ import { blitzFetch, blitzInflight, initBlitzNet } from "./blitz-fetch";
 
 import initialHtml from "./initial.html?raw";
 import flavortownHtml from "./flavortown.html?raw";
+import m3dlStyles from "m3-dreamland/styles?raw";
 
 let SCALE = Math.ceil(window.devicePixelRatio);
 
@@ -65,6 +66,7 @@ function App(this: FC<{
 	withHarnessDisabled(() => this.state = "renderer-init");
 	let ready = false;
 
+	let focusCanvas = createDelegate<void>();
 	let pointer: [PointerEvent, number, number][] = [];
 	let wheel: [WheelEvent, number, number][] = [];
 	let key: [KeyboardEvent][] = [];
@@ -74,12 +76,17 @@ function App(this: FC<{
 	let stream: ImageStream = (async () => {
 		if (!screen) return { done: false };
 		if (this.state.endsWith("-init")) withHarnessDisabled(() => this.state = "rendering");
+		focusCanvas();
+
+		let time = performance.now() / 1000;
+
+		doc.resolve(time)
 
 		for (let ev of pointer.splice(0)) doc.event(events, BlitzDocument.event_pointer(...ev))
 		for (let ev of wheel.splice(0)) doc.event(events, BlitzDocument.event_wheel(...ev))
 		for (let ev of key.splice(0)) doc.event(events, BlitzDocument.event_keyboard(...ev))
 
-		renderer.render(doc, blitzInflight(), performance.now());
+		renderer.render(doc, blitzInflight(), time);
 
 		return { value: screen.transferToImageBitmap(), done: false };
 	}) as any;
@@ -142,7 +149,7 @@ function App(this: FC<{
 		<div>
 			{use(this.state).map(x => x === "net-proxy-fail").and(<ProxyFail wisp={use(this.wisp)} then={init} />)}
 			{use(this.state).map(x => !["rendering", "net-proxy-fail"].includes(x)).and(_ => <SvgState state={this.state} />)}
-			{use(this.state).map(x => x === "rendering").and(<FakeCanvas stream={stream} pointer={onEv(pointer)} scroll={onEv(wheel)} key={onEv(key)} />)}
+			{use(this.state).map(x => x === "rendering").and(<FakeCanvas stream={stream} focus={focusCanvas} pointer={onEv(pointer)} scroll={onEv(wheel)} key={onEv(key)} />)}
 		</div>
 	)
 }
@@ -150,7 +157,14 @@ function App(this: FC<{
 try {
 	let flavortown = location.search === "?flavortown";
 	await init({ module_or_path: blitz_wasm });
-	let renderer = await BlitzRenderer.new(flavortown ? flavortownHtml : initialHtml, "https://dreamland.js.org/", blitzFetch, new OffscreenCanvas(1, 1), 1);
+	let shell = new BlitzShellProvider(
+		(text: string) => {
+			navigator.clipboard.writeText(text)
+				.then(() => console.debug("[blitz-shell] wrote to clipboard"))
+				.catch((e) => console.warn("[blitz-shell] failed to write to clipboard", e));
+		}
+	);
+	let renderer = await BlitzRenderer.new(flavortown ? flavortownHtml : initialHtml, "https://dreamland.js.org/", blitzFetch, shell, new OffscreenCanvas(1, 1), 1);
 	document.body.replaceWith(<App wisp="wss://anura.pro/" ret={renderer} ready={() => {
 		if (flavortown) return;
 
@@ -159,12 +173,22 @@ try {
 		let events = renderer[2];
 		let impl = createBlitzDomImpl(dom, events);
 
+		dom.add_style(`
+			html, body { padding: 0; margin: 0; width: 100%; height: 100%; }
+		`);
+		dom.add_style(m3dlStyles);
+
 		setTimeout(() => {
 			setDomImpl(impl);
 			let app = <BlitzApp /> as any as BlitzDomNode;
-			console.log(app.outerHTML);
 			dom.query_selector("#app")!.replace(dom, app.node);
 		}, 100);
+
+		document.addEventListener("keyup", (e) => {
+			if (e.ctrlKey && e.altKey && e.key === "i") {
+				dom.toggle_devtools();
+			}
+		})
 	}} />);
 } catch (err) {
 	console.error(err);

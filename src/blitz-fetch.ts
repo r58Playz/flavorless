@@ -8,6 +8,10 @@ let clientPromiseResolve = () => {};
 let clientPromise = new Promise<void>(r => clientPromiseResolve = r);
 let inflight = 0;
 
+let cache = await caches.open("blitz-net");
+
+(self as any).deleteCache = () => { caches.delete("blitz-net"); location.reload(); }
+
 export async function initBlitzNet(wisp: string) {
 	console.log("initting blitz net with", wisp);
 	if (!initted) {
@@ -36,10 +40,15 @@ export async function blitzFetch(req: Request): Promise<[string, Uint8Array]> {
 	if (!client) throw "client not initted";
 	inflight++;
 	try {
-		console.log("[blitz-net]", req.method, req.url)
-		let res = await client.fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
-		await new Promise(r => setTimeout(r, 1000));
-		return [res.url, new Uint8Array(await res.arrayBuffer())];
+		console.debug("[blitz-net]", req.method, req.url)
+
+		let res;
+		if (!(res = await cache.match(req))) {
+			res = await client.fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+			cache.put(req, res.clone());
+		}
+
+		return [res.url || req.url, new Uint8Array(await res.arrayBuffer())];
 	} finally {
 		inflight--;
 	}

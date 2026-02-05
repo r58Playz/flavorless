@@ -1,0 +1,17 @@
+diff --git a/style/invalidation/element/state_and_attributes.rs b/style/invalidation/element/state_and_attributes.rs
+index 909b2606e..9252c7207 100644
+--- a/style/invalidation/element/state_and_attributes.rs
++++ b/style/invalidation/element/state_and_attributes.rs
+@@ -139,7 +139,11 @@ where
+ /// Whether we should process the descendants of a given element for style
+ /// invalidation.
+ pub fn should_process_descendants(data: &ElementData) -> bool {
+-    !data.styles.is_display_none() && !data.hint.contains(RestyleHint::RESTYLE_DESCENDANTS)
++    // Check if the element has styles before checking display: none.
++    // Elements that haven't been styled yet don't have a primary style,
++    // and calling is_display_none() would panic.
++    data.has_styles() &&
++        !data.styles.is_display_none() && !data.hint.contains(RestyleHint::RESTYLE_DESCENDANTS)
+ }
+ 
+ /// Propagates the bits after invalidating a descendant child.

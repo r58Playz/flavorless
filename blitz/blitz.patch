@@ -1,5 +1,5 @@
 diff --git a/Cargo.lock b/Cargo.lock
-index a908609d..1371ee61 100644
+index a908609d..d14b0287 100644
 --- a/Cargo.lock
 +++ b/Cargo.lock
 @@ -774,6 +774,7 @@ dependencies = [
@@ -10,7 +10,15 @@ index a908609d..1371ee61 100644
   "keyboard-types 0.7.0",
   "linebender_resource_handle",
   "markup5ever",
-@@ -3586,6 +3587,18 @@ dependencies = [
+@@ -795,6 +796,7 @@ dependencies = [
+  "tracing",
+  "url",
+  "usvg",
++ "web-sys",
+  "woff",
+  "wuff",
+ ]
+@@ -3586,6 +3588,18 @@ dependencies = [
   "libc",
  ]
  
@@ -29,15 +37,27 @@ index a908609d..1371ee61 100644
  [[package]]
  name = "ipnet"
  version = "2.11.0"
+diff --git a/Cargo.toml b/Cargo.toml
+index da162d19..e8e42c7b 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -256,4 +256,4 @@ tracing-subscriber = "0.3"
+ 
+ # [patch."https://github.com/nicoburns/parley"]
+ # parley = { path = "../parley/parley" }
+-# fontique = { path = "../parley/fontique" }
+\ No newline at end of file
++# fontique = { path = "../parley/fontique" }
 diff --git a/packages/blitz-dom/Cargo.toml b/packages/blitz-dom/Cargo.toml
-index 55fcac69..545c4964 100644
+index 55fcac69..fe51b3c7 100644
 --- a/packages/blitz-dom/Cargo.toml
 +++ b/packages/blitz-dom/Cargo.toml
-@@ -84,6 +84,7 @@ url = { workspace = true }
+@@ -84,6 +84,8 @@ url = { workspace = true }
  keyboard-types = { workspace = true }
  cursor-icon = { workspace = true }
  thread_local.workspace = true
 +instant = { version = "0.1.13", features = ["now", "wasm-bindgen"] }
++web-sys = { version = "0.3.85", features = ["console"] }
  
  # HACK: Blitz doesn't need to depend on objc2 directly. But this feature flag is necessary
  # to prevent debug builds from panicking.
@@ -54,6 +74,18 @@ index 4a3e76aa..db6d2b26 100644
  use style::Atom;
  use style::animation::DocumentAnimationSet;
  use style::attr::{AttrIdentifier, AttrValue};
+diff --git a/packages/blitz-dom/src/events/keyboard.rs b/packages/blitz-dom/src/events/keyboard.rs
+index d3611384..1d50f471 100644
+--- a/packages/blitz-dom/src/events/keyboard.rs
++++ b/packages/blitz-dom/src/events/keyboard.rs
+@@ -255,6 +255,7 @@ fn apply_keypress_event(
+         }
+         Key::Character(s) => {
+             driver.insert_or_replace_selection(&s);
++			web_sys::console::log_2(&"inserting!!!".into(), &s.into());
+             return Some(GeneratedEvent::Input);
+         }
+         _ => {}
 diff --git a/packages/blitz-dom/src/events/pointer.rs b/packages/blitz-dom/src/events/pointer.rs
 index 8beb78f7..ccbc8570 100644
 --- a/packages/blitz-dom/src/events/pointer.rs
@@ -87,8 +119,50 @@ index 8beb78f7..ccbc8570 100644
          .unwrap()
          .as_millis() as u64;
  
+diff --git a/packages/blitz-dom/src/layout/construct.rs b/packages/blitz-dom/src/layout/construct.rs
+index 2aaa9848..7e00815c 100644
+--- a/packages/blitz-dom/src/layout/construct.rs
++++ b/packages/blitz-dom/src/layout/construct.rs
+@@ -623,6 +623,7 @@ fn create_text_editor(doc: &mut BaseDocument, input_element_id: usize, is_multil
+ 
+     let styles = editor.edit_styles();
+     styles.retain(|_| false);
++    styles.insert(StyleProperty::FontStack(parley_style.font_stack));
+     styles.insert(StyleProperty::FontSize(parley_style.font_size));
+     styles.insert(StyleProperty::LineHeight(parley_style.line_height));
+     styles.insert(StyleProperty::Brush(parley_style.brush));
+diff --git a/packages/blitz-dom/src/net.rs b/packages/blitz-dom/src/net.rs
+index e04a3232..9e183eac 100644
+--- a/packages/blitz-dom/src/net.rs
++++ b/packages/blitz-dom/src/net.rs
+@@ -443,11 +443,11 @@ impl NetHandler for ResourceHandler<ImageHandler> {
+ impl ImageHandler {
+     fn parse(&self, bytes: Bytes) -> Result<Resource, String> {
+         // Try parse image
+-        if let Ok(image) = image::ImageReader::new(Cursor::new(&bytes))
++        match image::ImageReader::new(Cursor::new(&bytes))
+             .with_guessed_format()
+             .expect("IO errors impossible with Cursor")
+-            .decode()
+-        {
++            .decode() {
++        Ok(image) => {
+             let raw_rgba8_data = image.clone().into_rgba8().into_raw();
+             return Ok(Resource::Image(
+                 self.kind,
+@@ -455,7 +455,9 @@ impl ImageHandler {
+                 image.height(),
+                 Arc::new(raw_rgba8_data),
+             ));
+-        };
++        },
++		Err(err) => web_sys::console::log_1(&format!("{err:?} {err}").into()),
++			}
+ 
+         #[cfg(feature = "svg")]
+         {
 diff --git a/packages/blitz-dom/src/node/node.rs b/packages/blitz-dom/src/node/node.rs
-index aaef93fa..bf7c74a2 100644
+index aaef93fa..13189ee4 100644
 --- a/packages/blitz-dom/src/node/node.rs
 +++ b/packages/blitz-dom/src/node/node.rs
 @@ -728,6 +728,18 @@ impl Node {
@@ -121,6 +195,16 @@ index aaef93fa..bf7c74a2 100644
  
                      writer.push_str("</");
                      writer.push_str(&data.name.local);
+@@ -983,8 +993,7 @@ impl Node {
+ 
+         // Inline children
+         if self.flags.is_inline_root() {
+-            let element_data = &self.element_data().unwrap();
+-            if let Some(ild) = element_data.inline_layout_data.as_ref() {
++            if let Some(ref element_data) = self.element_data() && let Some(ild) = element_data.inline_layout_data.as_ref() {
+                 let layout = &ild.layout;
+                 let scale = layout.scale();
+ 
 diff --git a/packages/blitz-dom/src/resolve.rs b/packages/blitz-dom/src/resolve.rs
 index 22b2fc7b..9506a0a0 100644
 --- a/packages/blitz-dom/src/resolve.rs
@@ -146,3 +230,84 @@ index 22b2fc7b..9506a0a0 100644
                      .unwrap()
                      .as_millis() as u64 as f64;
  
+diff --git a/packages/blitz-dom/src/stylo.rs b/packages/blitz-dom/src/stylo.rs
+index 67cfbab1..b892bb8f 100644
+--- a/packages/blitz-dom/src/stylo.rs
++++ b/packages/blitz-dom/src/stylo.rs
+@@ -118,6 +118,12 @@ impl crate::document::BaseDocument {
+         // components/layout_2020/lib.rs:983
+         let root = self.root_element();
+         // dbg!(root);
++        
++        // Ensure the root has style data before pre_traverse
++        // This prevents panics in stylo's invalidation code which assumes
++        // elements have primary computed styles
++        unsafe { root.ensure_data() };
++        
+         let token = RecalcStyle::pre_traverse(root, &context);
+ 
+         if token.should_traverse() {
+diff --git a/packages/blitz-html/src/html_sink.rs b/packages/blitz-html/src/html_sink.rs
+index 321b140b..002fd9ea 100644
+--- a/packages/blitz-html/src/html_sink.rs
++++ b/packages/blitz-html/src/html_sink.rs
+@@ -9,7 +9,7 @@ use std::cell::{Cell, Ref, RefCell, RefMut};
+ use blitz_dom::node::Attribute;
+ use blitz_dom::{DocumentMutator, HtmlParserProvider};
+ use html5ever::{
+-    QualName,
++    QualName, ns,
+     tendril::{StrTendril, TendrilSink},
+     tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink},
+ };
+@@ -107,6 +107,21 @@ impl<'m, 'doc> DocumentHtmlParser<'m, 'doc> {
+         element_id: usize,
+         html: &str,
+     ) {
++        // Check if the parent element is in SVG or MathML namespace
++        // html5ever doesn't properly handle fragment parsing in these contexts,
++        // so we need to wrap the content appropriately
++        let element_ns = mutr.element_name(element_id).map(|n| n.ns.clone());
++        let is_svg = element_ns.as_ref() == Some(&ns!(svg));
++        let is_mathml = element_ns.as_ref() == Some(&ns!(mathml));
++
++        let (wrapped_html, wrapper_tag) = if is_svg {
++            (format!("<svg xmlns=\"http://www.w3.org/2000/svg\">{}</svg>", html), Some("svg"))
++        } else if is_mathml {
++            (format!("<math xmlns=\"http://www.w3.org/1998/Math/MathML\">{}</math>", html), Some("math"))
++        } else {
++            (html.to_string(), None)
++        };
++
+         let sink = DocumentHtmlParser::new(mutr);
+ 
+         let opts = ParseOpts {
+@@ -121,14 +136,25 @@ impl<'m, 'doc> DocumentHtmlParser<'m, 'doc> {
+         };
+         html5ever::driver::parse_fragment_for_element(sink, opts, element_id, false, None)
+             .from_utf8()
+-            .read_from(&mut html.as_bytes())
++            .read_from(&mut wrapped_html.as_bytes())
+             .unwrap();
+ 
+         // html5ever creates a new fragment root node under the document node and parses the nodes into that fragment root.
+         // So here we move the children of the fragment root to element_id and then remove the fragment root
+         let fragment_root_id = mutr.last_child_id(0).unwrap();
+-        let child_ids = mutr.child_ids(fragment_root_id);
+-        mutr.append_children(element_id, &child_ids);
++
++        if wrapper_tag.is_some() {
++            // For SVG/MathML, we need to unwrap the children from the wrapper element
++            // The structure is: fragment_root -> wrapper (svg/math) -> actual children
++            let fragment_children = mutr.child_ids(fragment_root_id);
++            if let Some(&wrapper_id) = fragment_children.first() {
++                let child_ids = mutr.child_ids(wrapper_id);
++                mutr.append_children(element_id, &child_ids);
++            }
++        } else {
++            let child_ids = mutr.child_ids(fragment_root_id);
++            mutr.append_children(element_id, &child_ids);
++        }
+         mutr.remove_node(fragment_root_id);
+     }
+ }

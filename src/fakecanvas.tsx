@@ -1,4 +1,4 @@
-import type { FC } from "dreamland/core";
+import type { Delegate, FC } from "dreamland/core";
 
 export interface ImageStream {
 	(): Promise<{ value?: ImageBitmap, done: boolean }>;
@@ -30,6 +30,7 @@ function streamToTrack(stream: ReadableStream<VideoFrame>): MediaStreamVideoTrac
 
 export function FakeCanvas(this: FC<{
 	stream: ImageStream,
+	focus: Delegate<void>,
 	pointer: (e: PointerEvent, x: number, y: number) => void,
 	scroll: (e: WheelEvent, x: number, y: number) => void,
 	key: (e: KeyboardEvent) => void,
@@ -47,8 +48,13 @@ export function FakeCanvas(this: FC<{
 		this.scroll(e, x, y);
 	};
 
+	this.cx.mount = () => {
+		this.focus.listen(() => this.root.focus());
+	}
+
 	return (
 		<video
+			tabindex={1}
 			attr:srcObject={stream}
 
 			autoplay="true"

@@ -38,7 +38,10 @@ impl CanvasVelloScene {
 			.context("failed to request adapter")?;
 
 		let (device, queue) = adapter
-			.request_device(&DeviceDescriptor::default())
+			.request_device(&DeviceDescriptor {
+				required_limits: adapter.limits(),
+				..Default::default()
+			})
 			.await
 			.context("failed to request device")?;
 

@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use blitz_dom::{DocumentConfig, FontContext};
-use blitz_html::HtmlDocument;
-use blitz_traits::shell::{ColorScheme, Viewport};
+use blitz_html::{HtmlDocument, HtmlProvider};
+use blitz_traits::shell::{ClipboardError, ColorScheme, ShellProvider, Viewport};
 use fontique::Blob;
-use js_sys::Array;
+use js_sys::{Array, Function};
 use wasm_bindgen::{JsError, JsValue, prelude::wasm_bindgen};
 use web_sys::OffscreenCanvas;
 
@@ -42,6 +42,28 @@ fn anyhow_to_obj(val: anyhow::Error) -> JsError {
 }
 
 #[wasm_bindgen]
+pub struct BlitzShellProvider {
+	set_clipboard: Function,
+}
+unsafe impl Send for BlitzShellProvider {}
+unsafe impl Sync for BlitzShellProvider {}
+#[wasm_bindgen]
+impl BlitzShellProvider {
+	#[wasm_bindgen(constructor)]
+	pub fn new(set_clipboard: Function) -> Self {
+		Self { set_clipboard }
+	}
+}
+impl ShellProvider for BlitzShellProvider {
+	fn set_clipboard_text(&self, text: String) -> Result<(), ClipboardError> {
+		self.set_clipboard
+			.call1(&JsValue::NULL, &text.into())
+			.map(|_| ())
+			.map_err(|_| ClipboardError)
+	}
+}
+
+#[wasm_bindgen]
 pub struct BlitzRenderer {
 	scene: CanvasVelloScene,
 }
@@ -51,6 +73,7 @@ impl BlitzRenderer {
 		html: String,
 		base: String,
 		fetcher: BlitzFetcherFunction,
+		shell: BlitzShellProvider,
 		canvas: OffscreenCanvas,
 		scale: f32,
 	) -> anyhow::Result<(BlitzRenderer, BlitzDocument, BlitzEventHandler)> {
@@ -70,11 +93,13 @@ impl BlitzRenderer {
 			)),
 			base_url: Some(base),
 			net_provider: Some(Arc::new(NetProvider::new(fetcher))),
+			shell_provider: Some(Arc::new(shell)),
+			html_parser_provider: Some(Arc::new(HtmlProvider)),
 			..Default::default()
 		};
 
 		let mut doc = HtmlDocument::from_html(&html, config);
-		doc.add_user_agent_stylesheet(":root { font-family: Adwaita Sans; }");
+		doc.add_user_agent_stylesheet(":root, input, textarea { font-family: Adwaita Sans; }");
 
 		Ok((
 			BlitzRenderer {
@@ -92,10 +117,11 @@ impl BlitzRenderer {
 		html: String,
 		base: String,
 		fetcher: BlitzFetcherFunction,
+		shell: BlitzShellProvider,
 		canvas: OffscreenCanvas,
 		scale: f32,
 	) -> Result<BlitzRendererResult, JsError> {
-		Self::_new(html, base, fetcher, canvas, scale)
+		Self::_new(html, base, fetcher, shell, canvas, scale)
 			.await
 			.map(|x| JsValue::from(Array::of3(&x.0.into(), &x.1.into(), &x.2.into())).into())
 			.map_err(anyhow_to_obj)
@@ -135,7 +161,7 @@ impl BlitzRenderer {
 		};
 
 		let bar_height = 8.0 * scale as f64;
-		let cycle_time = 1750.0; // 1.75 seconds
+		let cycle_time = 1.75;
 		let progress = (time % cycle_time) / cycle_time;
 
 		// Helper to interpolate keyframe values
@@ -236,7 +262,7 @@ impl BlitzRenderer {
 			scene.fill(Fill::NonZero, Affine::IDENTITY, bar_color, None, &rect);
 		}
 
-        bar_height as u32
+		bar_height as u32
 	}
 
 	#[wasm_bindgen]
@@ -246,14 +272,13 @@ impl BlitzRenderer {
 		loading: bool,
 		time: f64,
 	) -> Result<(), JsError> {
-		doc.resolve(time);
 		self.scene
 			.render(|scene, width, height, scale| {
-                let offset = if loading {
-                    Self::loader(width, scale, time, scene)
-                } else {
-                    0
-                };
+				let offset = if loading {
+					Self::loader(width, scale, time, scene)
+				} else {
+					0
+				};
 
 				blitz_paint::paint_scene(
 					&mut VelloScenePainter::new(scene),

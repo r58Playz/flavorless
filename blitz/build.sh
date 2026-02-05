@@ -16,6 +16,15 @@ if ! [ -d "blitz" ]; then
 	)
 fi
 
+if ! [ -d "stylo" ]; then
+	(
+		git clone https://github.com/servo/stylo
+		cd stylo || exit 1
+		git reset --hard v0.11.0
+		git apply ../stylo.patch
+	)
+fi
+
 if [ "${MINIMAL:-0}" = "1" ]; then
 	CARGOFLAGS="--no-default-features"
 else
@@ -28,7 +37,7 @@ if [ "$(wasm-bindgen -V)" != "$WBG" ]; then
 	exit 1
 fi
 
-export CFLAGS='-O3' RUSTFLAGS='-Zlocation-detail=none'
+export CFLAGS='-O3' 
 cargo build --target wasm32-unknown-unknown -Z build-std=panic_abort,std -Z build-std-features=optimize_for_size --release $CARGOFLAGS "$@"
 echo "[wbg] cargo finished"
 wasm-bindgen --target web --out-dir out/ target/wasm32-unknown-unknown/release/blitz_dl.wasm
