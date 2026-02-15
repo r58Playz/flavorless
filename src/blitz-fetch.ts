@@ -22,6 +22,7 @@ export async function initBlitzNet(wisp: string) {
 	let opts = new EpoxyClientOptions();
 	// ttf fonts
 	opts.user_agent = "curl/8.18.0";
+	opts.disable_certificate_validation = true;
 	let epx = new EpoxyClient(wisp, opts);
 	try {
 		if (!(await epx.fetch("https://example.com/", {}).then(r => r.text())).startsWith(`<!doctype html><html lang="en"><head><title>Example Domain</title>`)) {
